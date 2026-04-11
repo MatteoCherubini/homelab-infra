@@ -1,0 +1,16 @@
+# ── SECURITY: Vaultwarden ──
+
+services:
+
+  vaultwarden:
+    image: vaultwarden/server:1.33.2
+    restart: unless-stopped
+    ports:
+      - "${VAULTWARDEN_PORT:-8087}:80"
+    volumes:
+      - ${DATA_ROOT}/vaultwarden/data:/data
+    environment:
+      WEBSOCKET_ENABLED: "true"
+      SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
+    networks:
+      - homelab

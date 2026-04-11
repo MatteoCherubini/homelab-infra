@@ -1,0 +1,17 @@
+# ── GIT: Forgejo ──
+
+services:
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:10
+    restart: unless-stopped
+    ports:
+      - "${FORGEJO_HTTP_PORT:-3001}:3000"
+      - "${FORGEJO_SSH_PORT:-222}:22"
+    volumes:
+      - ${MEDIA_ROOT}/forgejo/data:/data
+    environment:
+      USER_UID: "${PUID:-1000}"
+      USER_GID: "${PGID:-1000}"
+    networks:
+      - homelab

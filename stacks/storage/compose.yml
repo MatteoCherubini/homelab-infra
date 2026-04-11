@@ -1,0 +1,40 @@
+# ── STORAGE: Garage S3, Kopia Backup, Pingvin Share ──
+
+services:
+
+  garage:
+    image: dxflrs/garage:v1.0.0
+    restart: unless-stopped
+    ports:
+      - "${GARAGE_API_PORT:-3900}:3900"
+      - "${GARAGE_RPC_PORT:-3901}:3901"
+      - "${GARAGE_WEB_PORT:-3902}:3902"
+    volumes:
+      - ${MEDIA_ROOT}/garage/data:/var/lib/garage/data
+      - ${DATA_ROOT}/garage/meta:/var/lib/garage/meta
+    networks:
+      - homelab
+
+  kopia:
+    image: kopia/kopia:0.19
+    restart: unless-stopped
+    ports:
+      - "${KOPIA_PORT:-51515}:51515"
+    volumes:
+      - ${DATA_ROOT}/kopia/config:/app/config
+      - ${DATA_ROOT}/kopia/cache:/app/cache
+      - ${DATA_ROOT}:/data:ro
+      - ${MEDIA_ROOT}:/media_data:ro
+    command: server start --insecure --address=0.0.0.0:51515
+    networks:
+      - homelab
+
+  pingvin:
+    image: stonith404/pingvin-share:1.8.0
+    restart: unless-stopped
+    ports:
+      - "${PINGVIN_PORT:-3002}:3000"
+    volumes:
+      - ${MEDIA_ROOT}/pingvin/data:/opt/app/backend/data
+    networks:
+      - homelab

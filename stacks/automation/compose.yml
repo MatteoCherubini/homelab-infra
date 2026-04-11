@@ -1,0 +1,46 @@
+# ── AUTOMATION: n8n + PostgreSQL ──
+
+services:
+
+  n8n-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - ${DATA_ROOT}/n8n/db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${N8N_DB_NAME}
+      POSTGRES_USER: ${N8N_DB_USER}
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD}
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${N8N_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:1.87.2
+    restart: unless-stopped
+    depends_on:
+      n8n-db:
+        condition: service_healthy
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - ${DATA_ROOT}/n8n/data:/home/node/.n8n
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      NODE_OPTIONS: --max-old-space-size=1024
+      EXECUTIONS_DATA_PRUNE: "true"
+      N8N_BINARY_DATA_MANAGER: filesystem
+      GENERIC_TIMEZONE: ${TZ}
+    networks:
+      - homelab

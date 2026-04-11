@@ -1,0 +1,60 @@
+# ── MONITORING: Netdata, Grafana, Loki, Promtail ──
+
+services:
+
+  netdata:
+    image: netdata/netdata:v2.3.0
+    restart: unless-stopped
+    ports:
+      - "${NETDATA_PORT:-19999}:19999"
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ${DATA_ROOT}/netdata/config:/etc/netdata
+      - ${DATA_ROOT}/netdata/lib:/var/lib/netdata
+      - ${DATA_ROOT}/netdata/cache:/var/cache/netdata
+      - /etc/os-release:/host/etc/os-release:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - homelab
+
+  loki:
+    image: grafana/loki:3.4.2
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ${DATA_ROOT}/loki/data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - homelab
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    restart: unless-stopped
+    volumes:
+      - ${DATA_ROOT}/promtail/config:/etc/promtail
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - homelab
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3003}:3000"
+    volumes:
+      - ${DATA_ROOT}/grafana/data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      TZ: ${TZ}
+    networks:
+      - homelab

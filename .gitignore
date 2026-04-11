@@ -1,0 +1,17 @@
+# Dati e database – MAI nel repo
+data/
+media/
+
+# Secrets
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

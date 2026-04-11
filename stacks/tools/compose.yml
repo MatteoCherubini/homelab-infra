@@ -1,0 +1,22 @@
+# ── TOOLS: ntfy, Excalidraw ──
+
+services:
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0
+    restart: unless-stopped
+    ports:
+      - "${NTFY_PORT:-8091}:80"
+    volumes:
+      - ${DATA_ROOT}/ntfy/data:/var/lib/ntfy
+    command: serve
+    networks:
+      - homelab
+
+  excalidraw:
+    image: excalidraw/excalidraw:latest
+    restart: unless-stopped
+    ports:
+      - "${EXCALIDRAW_PORT:-8092}:80"
+    networks:
+      - homelab
