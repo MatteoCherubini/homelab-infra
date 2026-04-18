@@ -26,12 +26,28 @@ services:
       timeout: 5s
       retries: 5
 
+  n8n-redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --appendonly yes
+    volumes:
+      - ${DATA_ROOT}/n8n/redis:/data
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   n8n:
-    image: n8nio/n8n:1.93
+    image: n8nio/n8n:2.15.0
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
       n8n-db:
+        condition: service_healthy
+      n8n-redis:
         condition: service_healthy
     ports:
       - "${N8N_PORT:-5678}:5678"
@@ -43,9 +59,43 @@ services:
       DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
       DB_POSTGRESDB_USER: ${N8N_DB_USER}
       DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: n8n-redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_MODE: external
+      N8N_RUNNERS_BROKER_LISTEN_ADDRESS: "0.0.0.0"
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       NODE_OPTIONS: --max-old-space-size=1024
       EXECUTIONS_DATA_PRUNE: "true"
-      N8N_BINARY_DATA_MANAGER: filesystem
+      EXECUTIONS_DATA_MAX_AGE: 168
+      N8N_BINARY_DATA_STORAGE: filesystem
+      GENERIC_TIMEZONE: ${TZ}
+    networks:
+      - homelab
+
+  n8n-worker:
+    image: n8nio/n8n:2.15.0
+    restart: unless-stopped
+    command: worker
+    depends_on:
+      n8n:
+        condition: service_started
+      n8n-redis:
+        condition: service_healthy
+    volumes:
+      - ${DATA_ROOT}/n8n/data:/home/node/.n8n
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: n8n-redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       GENERIC_TIMEZONE: ${TZ}
     networks:
       - homelab
