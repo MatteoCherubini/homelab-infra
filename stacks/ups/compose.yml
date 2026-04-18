@@ -1,0 +1,21 @@
+# ── UPS: NUT (Network UPS Tools) ──
+# Abilitare dopo aver collegato l'UPS via USB a Nexus
+# Nel docker-compose.yml root: decommentare la riga include
+
+services:
+
+  nut-server:
+    image: instantlinux/nut-upsd:latest
+    restart: unless-stopped
+    ports:
+      - "${NUT_PORT:-3493}:3493"
+    volumes:
+      - ${DATA_ROOT}/nut/etc:/etc/nut
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true
+    environment:
+      API_USER: upsmon
+      API_PASSWORD: ${NUT_API_PASSWORD:-changeme}
+    networks:
+      - homelab

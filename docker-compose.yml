@@ -21,6 +21,7 @@ include:
   - stacks/storage/compose.yml
   - stacks/monitoring/compose.yml
   - stacks/tools/compose.yml
+  # - stacks/ups/compose.yml    # Abilitare dopo setup fisico UPS
 
 networks:
   homelab:
