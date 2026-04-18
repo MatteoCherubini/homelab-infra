@@ -1,0 +1,30 @@
+# Garage S3 — Configurazione base
+# Docs: https://garagehq.deuxfleurs.fr/documentation/reference-manual/configuration/
+#
+# Dopo il primo avvio:
+#   docker compose exec garage /garage status
+#   docker compose exec garage /garage layout assign -z dc1 -c 3T <NODE_ID>
+#   docker compose exec garage /garage layout apply --version 1
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+[rpc]
+bind_addr = "[::]:3901"
+# Il secret viene generato automaticamente al primo avvio
+# secret_file = "/var/lib/garage/meta/rpc_secret"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"

@@ -1,0 +1,33 @@
+# Headscale — Configurazione base
+# Modifica server_url con il tuo dominio dopo la Fase 2E
+# Docs: https://headscale.net/ref/configuration/
+
+server_url: http://10.0.10.20:8085
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 127.0.0.1:9090
+
+private_key_path: /var/lib/headscale/private.key
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+database:
+  type: sqlite3
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+
+derp:
+  server:
+    enabled: false
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+
+dns:
+  magic_dns: true
+  base_domain: headscale.internal
+  nameservers:
+    global:
+      - 10.0.10.1

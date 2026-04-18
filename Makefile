@@ -3,7 +3,7 @@
 help: ## Mostra questo help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-init: ## Setup iniziale: copia .env e crea directory dati
+init: ## Setup iniziale: crea .env, directory e config
 	@./scripts/init.sh
 
 up: ## Avvia tutto
