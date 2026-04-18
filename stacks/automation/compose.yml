@@ -1,11 +1,16 @@
-# ── AUTOMATION: n8n + PostgreSQL ──
-# n8n 2.x è disponibile ma molto recente — restiamo su 1.x per stabilità
-# Per aggiornare a 2.x: https://docs.n8n.io/release-notes/
+# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 ──
+#
+# n8n v2 richiede:
+#   - Worker esterno per queue mode
+#   - PostgreSQL (SQLite/MySQL non supportati in v2)
+#   - Redis per queue mode
+#
+# Ref: https://docs.n8n.io/2-0-breaking-changes/
 
 services:
 
   n8n-db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/n8n/db:/var/lib/postgresql/data
