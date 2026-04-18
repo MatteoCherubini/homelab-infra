@@ -7,7 +7,7 @@ init: ## Setup iniziale: copia .env e crea directory dati
 	@./scripts/init.sh
 
 up: ## Avvia tutto
-	docker compose up -d
+	COMPOSE_PARALLEL_LIMIT=1 docker compose up -d
 
 down: ## Ferma tutto
 	docker compose down

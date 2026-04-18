@@ -30,7 +30,7 @@ services:
       - homelab
 
   pingvin:
-    image: stonith404/pingvin-share:1.8.0
+    image: stonith404/pingvin-share:v1.8.0
     restart: unless-stopped
     ports:
       - "${PINGVIN_PORT:-3002}:3000"
