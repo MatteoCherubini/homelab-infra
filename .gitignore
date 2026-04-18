@@ -1,4 +1,4 @@
-# Dati e database – MAI nel repo
+# Dati e database — MAI nel repo
 data/
 media/
 
@@ -7,7 +7,7 @@ media/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbbs.db
 
 # Editor
 *.swp

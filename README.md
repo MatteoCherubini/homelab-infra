@@ -50,20 +50,28 @@ homelab/
 | `make logs` | Log live |
 | `make pull` | Aggiorna immagini |
 | `make check` | Verifica config |
+| `make health` | Container non healthy |
 | `make up-gpu` | Avvia con GPU NVIDIA |
 
-## Portabilità
+## Versioni immagini (Aprile 2026)
 
-Tutta la configurazione dipende da due variabili nel `.env`:
-
-- **`DATA_ROOT`** — config e database (SSD consigliato). Default: `./data`
-- **`MEDIA_ROOT`** — file grandi, foto, documenti (RAID/HDD). Default: `./media`
-
-Per migrare su un'altra macchina: clona il repo, copia il `.env`, punta i path ai tuoi dischi, `make up`.
+| Servizio | Versione | Criticità |
+|----------|----------|-----------|
+| Nextcloud | 30.0.6 | 🔴 Critico — tag fisso |
+| Immich | v2.7.5 | 🔴 Critico — tag fisso |
+| Paperless-ngx | 2.20.13 | 🔴 Critico — tag fisso |
+| Vaultwarden | 1.33.2 | 🔴 Critico — tag fisso |
+| PostgreSQL | 16-alpine | 🔴 Critico — major fisso |
+| n8n | 1.93 | 🟠 Medio — minor fisso |
+| Ollama | 0.21 | 🟠 Medio — minor fisso |
+| Open WebUI | v0.8.12 | 🟠 Medio — tag fisso |
+| Forgejo | 10 | 🟠 Medio — major fisso |
+| Grafana | 11.5.2 | 🟡 Basso — tag fisso |
+| Excalidraw | latest | 🟢 Stateless — latest ok |
 
 ## Disabilitare uno stack
 
-Commenta la riga corrispondente nel `docker-compose.yml` root:
+Commenta la riga nel `docker-compose.yml` root:
 
 ```yaml
 include:

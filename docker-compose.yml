@@ -1,7 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║              HOMELAB – Docker Compose Root                  ║
 # ║                                                              ║
-# ║  Questo file include tutti gli stack.                        ║
 # ║  Per disabilitare uno stack: commenta la riga include.       ║
 # ║                                                              ║
 # ║  Uso:                                                        ║

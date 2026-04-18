@@ -16,7 +16,7 @@ restart: ## Restart tutto
 	docker compose restart
 
 logs: ## Log live (tutti)
-	docker compose logs -f
+	docker compose logs -f --tail=50
 
 ps: ## Stato servizi
 	docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
@@ -24,22 +24,16 @@ ps: ## Stato servizi
 pull: ## Scarica immagini aggiornate (non avvia)
 	docker compose pull
 
-check: ## Verifica prerequisiti
+check: ## Verifica prerequisiti e config
 	@echo "Docker:  $$(docker --version)"
 	@echo "Compose: $$(docker compose version)"
 	@echo ""
 	@docker compose config --quiet && echo "✅ Compose config valida" || echo "❌ Errore nella config"
+	@echo ""
+	@grep -c "CHANGE_ME" .env && echo "⚠️  Ci sono password da cambiare nel .env!" || echo "✅ Nessun CHANGE_ME trovato"
 
-# ── Stack singoli ──────────────────────────────────────────────
-up-%: ## Avvia uno stack (es: make up-ai)
-	docker compose up -d $$(docker compose config --services | grep -f stacks/$*/compose.yml 2>/dev/null || echo "$*")
-
-down-%: ## Ferma uno stack
-	docker compose stop $$(docker compose config --services | grep -f stacks/$*/compose.yml 2>/dev/null || echo "$*")
-
-logs-%: ## Log di uno stack
-	docker compose logs -f $*
-
-# ── GPU ────────────────────────────────────────────────────────
 up-gpu: ## Avvia con supporto GPU NVIDIA
 	docker compose --profile gpu up -d
+
+health: ## Mostra solo i container non healthy
+	@docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v "healthy\|running" || echo "✅ Tutti i container sono healthy"
