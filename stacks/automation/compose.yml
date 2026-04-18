@@ -1,4 +1,6 @@
 # ── AUTOMATION: n8n + PostgreSQL ──
+# n8n 2.x è disponibile ma molto recente — restiamo su 1.x per stabilità
+# Per aggiornare a 2.x: https://docs.n8n.io/release-notes/
 
 services:
 
@@ -20,8 +22,9 @@ services:
       retries: 5
 
   n8n:
-    image: n8nio/n8n:1.87.2
+    image: n8nio/n8n:1.93
     restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
       n8n-db:
         condition: service_healthy

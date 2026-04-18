@@ -1,9 +1,10 @@
-# ── PHOTOS: Immich Server + ML + PostgreSQL + Redis ──
+# ── PHOTOS: Immich v2 + PostgreSQL + Redis + ML ──
+# Immich v2 è la prima release stabile
 
 services:
 
   immich-db:
-    image: tensorchord/pgvecto-rs:pg16-v0.2.0
+    image: tensorchord/pgvecto-rs:pg16-v0.4.0
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/immich/db:/var/lib/postgresql/data
@@ -11,10 +12,11 @@ services:
       POSTGRES_DB: ${IMMICH_DB_NAME}
       POSTGRES_USER: ${IMMICH_DB_USER}
       POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
     networks:
       - homelab
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${IMMICH_DB_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${IMMICH_DB_USER} -d ${IMMICH_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +33,7 @@ services:
       retries: 5
 
   immich-server:
-    image: ghcr.io/immich-app/immich-server:v1.131.3
+    image: ghcr.io/immich-app/immich-server:v2.7.5
     restart: unless-stopped
     depends_on:
       immich-db:
@@ -53,7 +55,7 @@ services:
       - homelab
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v1.131.3
+    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/immich/ml-cache:/cache

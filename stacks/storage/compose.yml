@@ -12,6 +12,7 @@ services:
     volumes:
       - ${MEDIA_ROOT}/garage/data:/var/lib/garage/data
       - ${DATA_ROOT}/garage/meta:/var/lib/garage/meta
+      - ${DATA_ROOT}/garage/config/garage.toml:/etc/garage.toml:ro
     networks:
       - homelab
 

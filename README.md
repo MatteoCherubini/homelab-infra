@@ -1,13 +1,14 @@
-# 🏠 Homelab Infrastructure
+# Homelab Infrastructure
 
-Infrastruttura Docker Compose modulare, portabile e versionata.
+Docker Compose modulare per AMD Nexus (Ubuntu Server 24.04).
 
 ## Quick Start
 
 ```bash
 git clone <repo> && cd homelab
-make init          # crea .env e directory
+make init          # crea .env, directory e config
 nano .env          # configura password e path
+make check         # verifica configurazione
 make up            # avvia tutto
 ```
 
@@ -70,25 +71,9 @@ include:
   # - stacks/ai/compose.yml    ← disabilitato
 ```
 
-## Aggiungere un nuovo servizio
-
-1. Crea `stacks/nome/compose.yml`
-2. Usa `${DATA_ROOT}` e `${MEDIA_ROOT}` per i volumi
-3. Usa `${NOME_PORT}` per le porte
-4. Aggiungi le variabili in `.env.example`
-5. Aggiungi l'include nel `docker-compose.yml` root
-
-## Versioning immagini
-
-| Criticità | Strategia | Esempio |
-|-----------|-----------|---------|
-| 🔴 Critico | Tag fisso | `postgres:16-alpine`, `nextcloud:30.0.6` |
-| 🟠 Medio | Major/minor | `forgejo:10`, `kopia:0.19` |
-| 🟢 Non critico | Latest ok | `excalidraw:latest` |
-
 ## Sicurezza
 
-- Le password sono nel `.env` (non nel repo)
-- `.env` è in `.gitignore`
-- Nessun `container_name` (evita conflitti)
+- Password nel `.env` (gitignored, mai nel repo)
+- Backup password in Vaultwarden + copia offline
+- Config template in `configs/` (senza segreti)
 - Docker socket montato in `:ro` dove possibile
