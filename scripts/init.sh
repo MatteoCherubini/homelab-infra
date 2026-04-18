@@ -44,7 +44,7 @@ dirs=(
     "$DATA/ollama/data"
     "$DATA/open-webui/data"
     # Automation
-    "$DATA/n8n/db" "$DATA/n8n/data"
+    "$DATA/n8n/db" "$DATA/n8n/data" "$DATA/n8n/redis"
     # Security
     "$DATA/vaultwarden/data"
     # Storage
