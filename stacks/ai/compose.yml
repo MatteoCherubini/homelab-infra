@@ -1,14 +1,10 @@
 # ── AI: Ollama + Open WebUI ──
-#
-# GPU: Se hai una NVIDIA GPU, imposta OLLAMA_GPU_ENABLED=true nel .env
-#      e usa il profilo gpu: docker compose --profile gpu up -d
-#
-# CPU only (default): docker compose up -d
+# GPU: OLLAMA_GPU_ENABLED=true nel .env + docker compose --profile gpu up -d
 
 services:
 
   ollama:
-    image: ollama/ollama:0.6.2
+    image: ollama/ollama:0.21
     restart: unless-stopped
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
@@ -18,7 +14,7 @@ services:
       - homelab
 
   ollama-gpu:
-    image: ollama/ollama:0.6.2
+    image: ollama/ollama:0.21
     restart: unless-stopped
     profiles:
       - gpu
@@ -37,7 +33,7 @@ services:
       - homelab
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:0.6.6
+    image: ghcr.io/open-webui/open-webui:v0.8.12
     restart: unless-stopped
     ports:
       - "${OPENWEBUI_PORT:-8090}:8080"
@@ -45,5 +41,6 @@ services:
       - ${DATA_ROOT}/open-webui/data:/app/backend/data
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
     networks:
       - homelab
