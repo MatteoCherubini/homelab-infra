@@ -18,19 +18,25 @@ homelab/
 ├── docker-compose.yml      ← root (include tutti gli stack)
 ├── .env.example             ← template variabili
 ├── Makefile                 ← comandi rapidi
+├── configs/                 ← template config (copiati da init.sh)
+│   ├── headscale/config.yaml
+│   ├── loki/loki.yml
+│   ├── promtail/config.yml
+│   └── garage/garage.toml
 ├── scripts/init.sh          ← bootstrap ambiente
 └── stacks/
     ├── core/        Nginx Proxy Manager, Headscale, Portainer, Homepage
     ├── cloud/       Nextcloud + PostgreSQL + Redis
-    ├── photos/      Immich + PostgreSQL + Redis + ML
+    ├── photos/      Immich v2 + PostgreSQL + Redis + ML
     ├── docs/        Paperless-ngx + PostgreSQL + Redis
     ├── ai/          Ollama + Open WebUI
     ├── automation/  n8n + PostgreSQL
     ├── git/         Forgejo
     ├── security/    Vaultwarden
-    ├── storage/     Garage S3, Kopia, Pingvin Share
+    ├── storage/     Garage S3, Kopia
     ├── monitoring/  Netdata, Grafana, Loki, Promtail
-    └── tools/       ntfy, Excalidraw
+    ├── tools/       ntfy, Excalidraw
+    └── ups/         NUT (disabilitato di default)
 ```
 
 ## Comandi
