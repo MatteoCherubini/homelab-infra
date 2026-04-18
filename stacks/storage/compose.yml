@@ -1,9 +1,10 @@
-# ── STORAGE: Garage S3, Kopia Backup, Pingvin Share ──
+# ── STORAGE: Garage S3, Kopia Backup ──
+# Pingvin Share rimosso (progetto archiviato) — usa Nextcloud per file sharing
 
 services:
 
   garage:
-    image: dxflrs/garage:v1.0.0
+    image: dxflrs/garage:v1.0.1
     restart: unless-stopped
     ports:
       - "${GARAGE_API_PORT:-3900}:3900"
@@ -27,15 +28,5 @@ services:
       - ${DATA_ROOT}:/data:ro
       - ${MEDIA_ROOT}:/media_data:ro
     command: server start --insecure --address=0.0.0.0:51515
-    networks:
-      - homelab
-
-  pingvin:
-    image: stonith404/pingvin-share:v1.8.0
-    restart: unless-stopped
-    ports:
-      - "${PINGVIN_PORT:-3002}:3000"
-    volumes:
-      - ${MEDIA_ROOT}/pingvin/data:/opt/app/backend/data
     networks:
       - homelab
