@@ -6,11 +6,11 @@ help: ## Mostra questo help
 init: ## Setup iniziale: crea .env, directory e config
 	@./scripts/init.sh
 
-up: ## Avvia tutto
-	COMPOSE_PARALLEL_LIMIT=1 docker compose up -d
+up: ## Avvia tutto (CPU)
+	COMPOSE_PARALLEL_LIMIT=1 docker compose --profile cpu up -d
 
-down: ## Ferma tutto
-	docker compose down
+down: ## Ferma tutto (qualsiasi profilo attivo)
+	docker compose --profile cpu --profile gpu down
 
 restart: ## Restart tutto
 	docker compose restart
