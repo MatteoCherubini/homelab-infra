@@ -32,7 +32,9 @@ services:
               count: 1
               capabilities: [gpu]
     networks:
-      - homelab
+      homelab:
+        aliases:
+          - ollama
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.8.12
