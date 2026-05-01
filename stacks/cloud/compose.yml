@@ -31,7 +31,7 @@ services:
       retries: 5
 
   nextcloud:
-    image: nextcloud:30.0.6-apache
+    image: nextcloud:33.0.2-apache
     restart: unless-stopped
     depends_on:
       nextcloud-db:
