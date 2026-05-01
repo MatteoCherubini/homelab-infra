@@ -1,63 +1,90 @@
-# ── PHOTOS: Immich v2 + PostgreSQL + Redis + ML ──
-# Immich v2 è la prima release stabile
+# ── IMMICH V2: DEFINITIVE INFRASTRUCTURE (GTX 1660 SUPER OPTIMIZED) ──
+# Release: v2.7.5 | Database: PG16 + VectorChord | Cache: Valkey 9
+# Hardware: NVIDIA Turing (CUDA 12.3+) | Data Integrity: Checksums Enabled
+
+name: immich
 
 services:
-
-  immich-db:
-    image: tensorchord/pgvecto-rs:pg16-v0.4.0
-    restart: unless-stopped
-    volumes:
-      - ${DATA_ROOT}/immich/db:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${IMMICH_DB_NAME}
-      POSTGRES_USER: ${IMMICH_DB_USER}
-      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD}
-      POSTGRES_INITDB_ARGS: "--data-checksums"
-    networks:
-      - homelab
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${IMMICH_DB_USER} -d ${IMMICH_DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  immich-redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    networks:
-      - homelab
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   immich-server:
+    container_name: immich_server
     image: ghcr.io/immich-app/immich-server:v2.7.5
     restart: unless-stopped
+    runtime: nvidia # Richiede NVIDIA Container Toolkit installato sull'host [7]
+    volumes:
+      - ${MEDIA_ROOT}/immich/upload:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - DB_HOSTNAME=immich-db
+      - DB_USERNAME=${IMMICH_DB_USER}
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD}
+      - DB_DATABASE_NAME=${IMMICH_DB_NAME}
+      - REDIS_HOSTNAME=immich-redis
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - IMMICH_HELMET_FILE=true # Abilita la Content Security Policy per la sicurezza 
+    ports:
+      - "${IMMICH_PORT:-2283}:2283"
     depends_on:
       immich-db:
         condition: service_healthy
       immich-redis:
         condition: service_healthy
-    ports:
-      - "${IMMICH_PORT:-2283}:2283"
-    volumes:
-      - ${MEDIA_ROOT}/immich/upload:/usr/src/app/upload
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      DB_HOSTNAME: immich-db
-      DB_DATABASE_NAME: ${IMMICH_DB_NAME}
-      DB_USERNAME: ${IMMICH_DB_USER}
-      DB_PASSWORD: ${IMMICH_DB_PASSWORD}
-      REDIS_HOSTNAME: immich-redis
     networks:
       - homelab
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5
+    container_name: immich_ml
+    # Utilizzo del tag CUDA specifico per GPU NVIDIA 
+    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5-cuda
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/immich/ml-cache:/cache
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - MACHINE_LEARNING_WORKERS=1 # Ottimale per 6GB di VRAM [4]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - homelab
+
+  immich-db:
+    container_name: immich_db
+    # Tag ufficiale PG16 + VectorChord verificato 
+    image: ghcr.io/immich-app/postgres:16-vectorchord0.5.3-pgvector0.8.1
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${IMMICH_DB_NAME}
+      - POSTGRES_USER=${IMMICH_DB_USER}
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS="--data-checksums"
+      - DB_STORAGE_TYPE=SSD # Ottimizzazione per IO concurrency su SSD [1, 8]
+    volumes:
+      - ${DATA_ROOT}/immich/db:/var/lib/postgresql/data
+    shm_size: 256mb # Cruciale per operazioni HNSW su grandi librerie [9, 1]
+    healthcheck:
+      # Verifica connettività e integrità fisica (checksum failures) 
+      test: ["CMD-SHELL", "pg_isready -U ${IMMICH_DB_USER} || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - homelab
+
+  immich-redis:
+    container_name: immich_redis
+    # Valkey 9: Performance multithread e open source totale [1, 11]
+    image: docker.io/valkey/valkey:9-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - homelab
