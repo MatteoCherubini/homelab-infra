@@ -10,7 +10,7 @@ services:
     volumes:
       - ${DATA_ROOT}/vaultwarden/data:/data
     environment:
-      WEBSOCKET_ENABLED: "true"
       SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
+    user: "1000:1000"
     networks:
       - homelab
