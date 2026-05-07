@@ -293,327 +293,619 @@ last_updated: $(date +%Y-%m-%d)
 
 # Index: ${name}
 
-Catalogo master di tutte le pagine del genome. Aggiornato dall'agente ad ogni ingestione.
+Master catalog of all pages in this genome. The agent updates this file on every ingest.
+Search this file first before reading individual pages.
 
-## Fonti (sources/)
-<!-- L'agente aggiunge qui ogni fonte ingerita -->
+---
 
-## Entità (entities/)
-<!-- Persone, tool, organizzazioni -->
+## Sources (wiki/sources/)
+<!-- One entry per ingested source. Format: - [[sources/slug]] — one-line summary -->
 
-## Concetti (concepts/)
-<!-- Teorie, pattern, architetture -->
+## Entities (wiki/entities/)
+<!-- People, tools, organisations, projects. -->
 
-## Query archiviate (queries/)
-<!-- Risposte sintetizzate degne di essere conservate -->
+## Concepts (wiki/concepts/)
+<!-- Patterns, theories, architectural decisions, methodologies. -->
+
+## Archived Queries (wiki/queries/)
+<!-- Synthesised answers worth preserving as standalone knowledge. -->
+
+## Private Synthesis (wiki/private/)
+<!-- Entries derived from personal data in raw/private/.
+     Visible only when PRIVATE_CONTEXT: enabled and repo is unlocked.
+     Listed here only by slug — no summaries to avoid leaking metadata. -->
 EOF
 
-  # wiki/log.md — registro append-only
+  # ── wiki/log.md ──────────────────────────────────────────────────────────
   cat > "${base}/wiki/log.md" << EOF
 ---
-title: "Log — ${name}"
+title: "Operations Log — ${name}"
 type: log
 ---
 
-# Log operativo: ${name}
+# Operations Log: ${name}
 
-Registro append-only di tutte le operazioni dell'agente.
-Formato: \`## [YYYY-MM-DD] <operazione> | <titolo>\`
+Append-only record of all agent operations. Never delete or edit past entries.
+
+**Parse last 5 entries:**
+\`\`\`bash
+grep "^## \[" wiki/log.md | tail -5
+\`\`\`
+
+**Parse by operation type:**
+\`\`\`bash
+grep "^## \[" wiki/log.md | grep "ingest"
+\`\`\`
 
 ---
 
-## [$(date +%Y-%m-%d)] init | Repository inizializzato
-Struttura scaffold creata. Nessuna fonte ancora ingerita.
+## [$(date +%Y-%m-%d)] init | Repository scaffolded
+Initial directory structure created by setup-knowledge-genome.sh.
+No sources ingested yet. git-crypt active on raw/private/ and wiki/private/.
 EOF
 
-  # AGENTS.md — schema locale del genome (contratto con l'agente)
+  # ── AGENTS.md ─────────────────────────────────────────────────────────────
+  # This is the agent's operating contract. It must be read at the start of
+  # every session. It defines rules, workflows, the PRIVATE_CONTEXT toggle,
+  # and the collaboration model.
   cat > "${base}/AGENTS.md" << AGENTEOF
-# Schema del Genome: ${name}
+# Agent Schema: ${name}
 
-Questo file definisce le regole operative per l'agente che mantiene questo genome.
-L'agente deve leggere questo file all'inizio di ogni sessione.
-
----
-
-## Identità del Genome
-
-- **Nome:** ${name}
-- **Scopo:** <!-- descrivi l'ambito di conoscenza di questo genome -->
-- **Proprietario:** ${FORGEJO_USER}
+**Read this file at the start of every session.**
+It defines the rules, workflows, and conventions for the LLM agent that
+maintains this genome. This file is the source of truth for agent behaviour.
 
 ---
 
-## Regole Fondamentali
+## Genome Identity
 
-1. **raw/ è sacra e immutabile.** L'agente può leggere raw/ ma non modificarne il contenuto.
-2. **wiki/ è di proprietà dell'agente.** L'agente crea, aggiorna e collega le pagine in wiki/.
-3. **Ogni operazione va registrata in wiki/log.md** nel formato: \`## [YYYY-MM-DD] <op> | <titolo>\`
-4. **wiki/index.md va aggiornato ad ogni ingestione** con il link alla nuova pagina source.
-5. **I commit seguono Conventional Commits:**
-   - \`feat(wiki): add source page for <titolo>\`
-   - \`fix(wiki): resolve contradiction in <concetto>\`
-   - \`chore(wiki): lint — fix orphan pages\`
-
----
-
-## Flusso di Ingestione (Ingest)
-
-Quando viene aggiunto un file in raw/:
-
-1. Leggi il documento.
-2. Crea \`wiki/sources/<slug-titolo>.md\` con riassunto + punti chiave.
-3. Identifica entità (persone, tool, organizzazioni) → aggiorna/crea pagine in \`wiki/entities/\`.
-4. Identifica concetti (pattern, teorie, architetture) → aggiorna/crea pagine in \`wiki/concepts/\`.
-5. Se una nuova info contraddice una esistente, aggiungi sezione **"Contraddizioni o Evoluzioni"** nella pagina del concetto — non cancellare il dato precedente.
-6. Aggiorna \`wiki/index.md\`.
-7. Appendi entry a \`wiki/log.md\`.
-8. Commit atomico su branch \`feat/ai-ingest-<slug>\`.
-9. Apri Pull Request su Forgejo per revisione umana.
+| Field       | Value |
+|-------------|-------|
+| Name        | ${name} |
+| Scope       | <!-- Describe the knowledge domain covered by this genome --> |
+| Owner       | ${FORGEJO_USER} |
+| Forgejo URL | ${FORGEJO_URL}/${FORGEJO_USER}/${name} |
+| Created     | $(date +%Y-%m-%d) |
 
 ---
 
-## Flusso di Query
+## Private Context Toggle
 
-Quando l'utente fa una domanda:
+This toggle controls whether the agent may access encrypted personal data.
+**It must be declared explicitly by the human operator in the session prompt.**
+The agent must never assume or infer a value for this toggle.
 
-1. Leggi \`wiki/index.md\` per individuare le pagine pertinenti.
-2. Leggi le pagine rilevanti.
-3. Sintetizza la risposta con citazioni (\[\[wikilink\]\]).
-4. Se la risposta è di valore duraturo, proponi di salvarla in \`wiki/queries/<slug>.md\`.
+\`\`\`
+PRIVATE_CONTEXT: disabled
+\`\`\`
+or
+\`\`\`
+PRIVATE_CONTEXT: enabled
+\`\`\`
+
+**Default is always: disabled.**
+
+### When PRIVATE_CONTEXT is disabled (default):
+- The agent behaves as if raw/private/ and wiki/private/ do not exist.
+- It must not read, reference, or acknowledge any file in those directories.
+- All outputs are safe to share with collaborators.
+- Use this mode for: collaborative sessions, professional reports, shared analysis,
+  any session where a third party may see the output, cloud model usage.
+
+### When PRIVATE_CONTEXT is enabled:
+- The agent may read raw/private/ and wiki/private/.
+- It may use personal data for: auto-filling document templates, personalised
+  financial analysis, introspective queries, self-improvement tracking.
+- Outputs from this mode are classified as personal and must not be shared.
+- The agent must prefix every response that draws on private data with:
+  \`[PRIVATE DATA INCLUDED]\`
+- Commit messages for private content use the prefix: \`feat(wiki/private): ...\`
+
+### On the AI server (runtime key injection):
+The symmetric git-crypt key must never be stored as a persistent file on
+the AI VM. Inject it at session start using Vaultwarden + bws CLI:
+\`\`\`bash
+# Unlock without writing the key to disk (process substitution)
+git-crypt unlock <(bws secret get "BWS_SECRET_ID_FOR_${name^^}" | jq -r '.value')
+\`\`\`
+When the session ends, or if PRIVATE_CONTEXT transitions to disabled, run:
+\`\`\`bash
+git-crypt lock
+\`\`\`
 
 ---
 
-## Flusso di Lint (Manutenzione)
+## Repository Structure
 
-Periodicamente:
-
-1. Cerca pagine orfane (nessun link in entrata).
-2. Cerca concetti duplicati da unificare.
-3. Cerca termini menzionati più volte senza pagina dedicata.
-4. Segnala affermazioni potenzialmente obsolete.
-5. Controlla che ogni pagina abbia il frontmatter YAML corretto.
+\`\`\`
+${name}/
+│
+├── raw/                       ← IMMUTABLE: agent reads, never modifies
+│   ├── articles/              │  Plaintext — open to collaborators
+│   ├── transcripts/           │  Plaintext — open to collaborators
+│   ├── code-packs/            │  Plaintext — open to collaborators
+│   ├── assets/                │  Plaintext — open to collaborators
+│   └── private/               │  AES-256-CTR encrypted (git-crypt)
+│                              │  Owner-only: personal docs, logs, data
+│
+├── wiki/                      ← AGENT-OWNED: agent writes and maintains
+│   ├── index.md               │  Master catalog — updated on every ingest
+│   ├── log.md                 │  Append-only operations log
+│   ├── sources/               │  One page per ingested source
+│   ├── entities/              │  People, tools, organisations
+│   ├── concepts/              │  Patterns, theories, decisions
+│   ├── queries/               │  Archived synthesised answers
+│   └── private/               │  AES-256-CTR encrypted (git-crypt)
+│                              │  Personal syntheses, sensitive analysis
+│
+├── .gitattributes             ← Cryptographic rules (DO NOT MODIFY carelessly)
+└── AGENTS.md                  ← This file
+\`\`\`
 
 ---
 
-## Formato Frontmatter YAML
+## Core Rules
 
-Ogni pagina wiki deve iniziare con:
+1. **raw/ is sacred and immutable.** Read files from raw/; never create, modify, or
+   delete them. raw/ is the source of truth.
+
+2. **wiki/ is owned by the agent.** Create, update, cross-link, and maintain all
+   pages in wiki/ based on what has been ingested.
+
+3. **Log every operation.** Every ingest, lint pass, or query that produces a
+   saved output must be appended to wiki/log.md using the format:
+   \`## [YYYY-MM-DD] <operation> | <title>\`
+
+4. **Update the index on every ingest.** wiki/index.md must always reflect the
+   current state of the wiki. Add the new page link immediately after creating it.
+
+5. **Commits follow Conventional Commits:**
+   - \`feat(wiki): add source page for <title>\`
+   - \`fix(wiki): resolve contradiction in <concept>\`
+   - \`chore(wiki): lint — orphan pages and stale claims\`
+   - \`feat(wiki/private): add personal synthesis for <document>\`
+   - \`docs(agents): update schema\`
+
+6. **Never commit unencrypted personal data outside raw/private/ or wiki/private/.**
+   The pre-commit hook enforces this automatically, but the agent must also
+   respect this rule when proposing file locations.
+
+7. **Contradict, don't overwrite.** If a new source contradicts an existing wiki
+   claim, add a "Contradictions or Updates" section to the relevant concept page.
+   The old claim stays as historical record with a deprecation note.
+
+8. **No direct writes to main.** The agent always works on a feature branch and
+   opens a Pull Request. The human operator reviews and merges.
+
+---
+
+## Ingest Workflow
+
+Triggered by: a new file appearing in raw/ (via Forgejo webhook → n8n → agent).
+
+1. Read the source document fully.
+2. Discuss key takeaways with the operator, or generate an autonomous analysis.
+3. Create \`wiki/sources/<slug>.md\` with: summary, key points, quotes worth preserving,
+   and links to affected entity and concept pages.
+4. For each person, tool, or organisation mentioned:
+   → Update or create \`wiki/entities/<name>.md\`
+5. For each pattern, theory, or architectural decision mentioned:
+   → Update or create \`wiki/concepts/<name>.md\`
+6. If a new claim contradicts an existing page → add "Contradictions or Updates" section.
+7. Update \`wiki/index.md\` with the new source page link.
+8. Append entry to \`wiki/log.md\`.
+9. Stage all changes and create an atomic commit on branch \`feat/ai-ingest-<slug>\`.
+10. Open a Pull Request on Forgejo for human review and approval.
+
+**For private sources** (raw/private/, requires PRIVATE_CONTEXT: enabled):
+- Steps are identical, but output files go to \`wiki/private/<slug>.md\`.
+- PR description must begin with: \`[PRIVATE] Contains personal data.\`
+- PR must not be merged during a collaborative or shared session.
+
+---
+
+## Query Workflow
+
+When the operator asks a question:
+
+1. Read \`wiki/index.md\` to identify relevant pages.
+2. Read those pages (and wiki/private/ if PRIVATE_CONTEXT: enabled).
+3. Synthesise a response using [[wikilink]] citations to source pages.
+4. If PRIVATE_CONTEXT is enabled and private data informed the answer,
+   prefix the response with \`[PRIVATE DATA INCLUDED]\`.
+5. If the answer has lasting value → propose saving it to \`wiki/queries/<slug>.md\`.
+
+For RAG implementations: during indexing, tag all chunks from private/ directories
+with \`visibility: private\` metadata. Apply a metadata filter on retrieval to
+exclude these chunks when PRIVATE_CONTEXT is disabled — even if they are indexed,
+they remain invisible to the model without explicit authorisation.
+
+---
+
+## Lint Workflow (Periodic Maintenance)
+
+1. Find orphan pages: wiki pages with no inbound [[wikilink]] from any other page.
+2. Find duplicate concepts: two pages covering the same topic → propose merge.
+3. Find implicit concepts: terms mentioned across 3+ pages without a dedicated page.
+4. Find stale claims: assertions that newer sources may have superseded.
+5. Verify YAML frontmatter is correct and complete on all pages (see format below).
+6. Report findings as a structured list → do not auto-fix without operator approval.
+7. Log the lint pass in wiki/log.md regardless of findings.
+
+---
+
+## YAML Frontmatter Format
+
+All wiki pages must begin with valid YAML frontmatter:
 
 \`\`\`yaml
 ---
-title: "Titolo della pagina"
-type: source | entity | concept | query
+title: "Human-readable page title"
+type: source | entity | concept | query | private
 domain: ${name}
 tags: []
 confidence: high | medium | low
 last_updated: YYYY-MM-DD
-source_count: N   # solo per pagine concept/entity
+source_count: N        # number of sources that support this page (concept/entity only)
+private: false         # set to true for all pages inside wiki/private/
 ---
 \`\`\`
+
+---
+
+## Collaboration Model
+
+| Role | Access | Permitted Operations |
+|------|--------|----------------------|
+| Owner (you) | Full — key holder | Read/write everywhere, can unlock private/ |
+| Trusted collaborator | Partial — no key | Push to raw/articles, raw/transcripts, raw/code-packs, raw/assets |
+| AI agent (local LLM) | Conditional | Reads private/ only when PRIVATE_CONTEXT: enabled and repo is unlocked |
+| AI agent (cloud LLM) | Public only | PRIVATE_CONTEXT must be disabled; never send private files to cloud models |
+
+To grant a collaborator write access to public folders only:
+- Add them as a Forgejo collaborator with "Write" role.
+- Do NOT share the git-crypt key.
+- They will see encrypted blobs in private/ — this is correct and expected.
+
+To add a trusted person to the private layer (exceptional cases only):
+\`\`\`bash
+git-crypt add-gpg-user <their-GPG-key-fingerprint>
+\`\`\`
+Note: revoking access from a GPG user requires re-generating the symmetric key
+and re-encrypting all private files. Prefer not to share the private layer.
 AGENTEOF
 
-  # .gitignore del genome
-  cat > "${base}/.gitignore" << 'GITEOF'
-# File di sistema
+  # ── .gitignore ───────────────────────────────────────────────────────────
+  cat > "${base}/.gitignore" << 'EOF'
+# OS artifacts
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Obsidian (solo la config è tracciata, non la cache)
+# Obsidian runtime files
+# Config (.obsidian/) is tracked so vault settings are preserved across machines.
+# Runtime and cache files are excluded.
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/cache
+.obsidian/.plugin-stats
 
-# File temporanei
+# Temporary files
 *.tmp
 *.bak
-GITEOF
+*~
 
-  success "Scaffold completato per: ${name}"
+# git-crypt symmetric keys — NEVER commit these
+*.key
+
+# Python / Node artifacts that might appear in code-packs
+__pycache__/
+node_modules/
+.env
+EOF
+
+  success "Scaffold complete for: ${name}"
 }
 
 # =============================================================================
-# INIZIO SCRIPT
+# MAIN
 # =============================================================================
 
-step "1/6 — Preparazione ambiente locale"
-mkdir -p "${WORK_DIR}"
+step "0/7 — Dependency check"
+check_deps
+
+step "1/7 — Preparing local workspace"
+mkdir -p "${WORK_DIR}" "${KEYS_DIR}"
 cd "${WORK_DIR}"
-info "Directory di lavoro: ${WORK_DIR}"
+info "Working directory : ${WORK_DIR}"
+info "Keys directory    : ${KEYS_DIR}"
+warn "Remember: move all *.key files to Vaultwarden and delete from disk after setup."
 
 # =============================================================================
-step "2/6 — Creazione repository su Forgejo"
+step "2/7 — Creating repositories on Forgejo"
 # =============================================================================
 
-# Repository master (pubblico: false — contiene riferimenti a finance, ecc.)
 forgejo_create_repo \
   "${MASTER_REPO}" \
-  "Master Knowledge Genome — archivio radice con sottomoduli per dominio" \
-  "false"
-
-# Repository genome (tutti privati per default)
-forgejo_create_repo \
-  "genome-dev" \
-  "Knowledge Genome: Sviluppo Web, TUI, Angular, architetture software" \
-  "false"
-
-forgejo_create_repo \
-  "genome-finance" \
-  "Knowledge Genome: Finanza personale, investimenti, analisi di mercato" \
+  "Master Knowledge Genome — root repository with domain genome submodules" \
   "true"
 
-forgejo_create_repo \
-  "genome-homelab" \
-  "Knowledge Genome: Infrastruttura Keru, configurazioni, log di rete" \
-  "false"
+for genome in "${GENOMES[@]}"; do
+  forgejo_create_repo \
+    "${genome}" \
+    "${GENOME_DESCRIPTIONS[$genome]}" \
+    "true"
+done
 
 # =============================================================================
-step "3/6 — Scaffold e push dei genome-repo"
+step "3/7 — Scaffolding, encrypting, and pushing genome repositories"
 # =============================================================================
 
 for genome in "${GENOMES[@]}"; do
-  info "Inizializzo ${genome}..."
-  mkdir -p "${WORK_DIR}/${genome}"
-  cd "${WORK_DIR}/${genome}"
+  info "──────────────────────────────────────────"
+  info "Processing: ${genome}"
 
+  local_path="${WORK_DIR}/${genome}"
+  mkdir -p "${local_path}"
+  cd "${local_path}"
+
+  # Initialise git and set remote
   git init -b main
   git remote add origin "${FORGEJO_URL}/${FORGEJO_USER}/${genome}.git"
 
-  scaffold_genome "${WORK_DIR}/${genome}"
+  # Configure git identity for commits (uses global config if already set)
+  git config user.name  "${FORGEJO_USER}" 2>/dev/null || true
+  git config user.email "${FORGEJO_USER}@keruhomelab.com" 2>/dev/null || true
 
+  # Initialise git-crypt BEFORE creating any files in private/ directories.
+  # This ensures .gitattributes rules are active from the very first commit.
+  git-crypt init
+  info "git-crypt initialised for ${genome}."
+
+  # Scaffold all directories and template files
+  scaffold_genome "${local_path}"
+
+  # Install the pre-commit hook (fail-safe against plaintext leaks)
+  write_precommit_hook "${local_path}"
+
+  # Stage and commit everything
   git add .
-  git commit -m "chore: initial scaffold for ${genome}"
-  git push -u origin main
+  git commit -m "chore: initial scaffold — git-crypt active on private/"
 
-  success "${genome} pushato su Forgejo."
+  # Export the symmetric key before pushing.
+  # The key is a binary file — store it in Vaultwarden as a secure note
+  # or encode it to base64 for the bws Secrets Manager:
+  #   base64 < keys/<genome>.key | bws secret create "GENOME_KEY_<NAME>" -
+  git-crypt export-key "${KEYS_DIR}/${genome}.key"
+  success "Symmetric key exported: ${KEYS_DIR}/${genome}.key"
+
+  # Push to Forgejo
+  git push -u origin main
+  success "${genome} pushed to Forgejo."
+
+  # Verify encryption is working correctly by locking and checking
+  info "Verifying encryption on ${genome}/raw/private/.gitkeep..."
+  git-crypt lock
+  if file "${local_path}/raw/private/.gitkeep" | grep -q "data"; then
+    success "Encryption verified: raw/private/ is locked (binary blob)."
+  else
+    warn "Encryption check inconclusive — verify manually with: git-crypt status"
+  fi
+  # Unlock again so the working tree is clean for subsequent steps
+  git-crypt unlock "${KEYS_DIR}/${genome}.key"
+
   cd "${WORK_DIR}"
 done
 
 # =============================================================================
-step "4/6 — Inizializzazione master-knowledge-genome"
+step "4/7 — Initialising master-knowledge-genome"
 # =============================================================================
 
 mkdir -p "${WORK_DIR}/${MASTER_REPO}"
 cd "${WORK_DIR}/${MASTER_REPO}"
 git init -b main
 git remote add origin "${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git"
+git config user.name  "${FORGEJO_USER}" 2>/dev/null || true
+git config user.email "${FORGEJO_USER}@keruhomelab.com" 2>/dev/null || true
 
-# AGENTS.md globale del repository master
-cat > AGENTS.md << 'EOF'
-# Schema Globale: master-knowledge-genome
+# ── Global AGENTS.md ─────────────────────────────────────────────────────────
+cat > AGENTS.md << EOF
+# Global Schema: master-knowledge-genome
 
-Questo file coordina tutti i genome-submodule del Knowledge Genome personale.
+This file coordinates all genome submodules of the personal Knowledge Genome.
+Read it before starting any cross-genome session.
 
-## Struttura
+---
 
-```
+## Repository Structure
+
+\`\`\`
 master-knowledge-genome/
-├── core-karpathy/     ← submodule: pattern LLM Wiki di Karpathy (read-only)
-├── genome-dev/        ← submodule: sviluppo web, TUI, Angular
-├── genome-finance/    ← submodule: finanza personale (accesso ristretto)
-├── genome-homelab/    ← submodule: infrastruttura Keru
-└── AGENTS.md          ← questo file
-```
+├── core-karpathy/      ← submodule: Karpathy LLM Wiki pattern (read-only reference)
+├── genome-dev/         ← submodule: development, Angular, TUI, software architecture
+├── genome-finance/     ← submodule: personal finance, investments, market analysis
+├── genome-homelab/     ← submodule: Keru infrastructure, network, architecture logs
+└── AGENTS.md           ← this file
+\`\`\`
 
-## Regole di Coordinamento
+Each genome submodule has its own \`AGENTS.md\` with domain-specific rules.
 
-- **core-karpathy/** è un submodule esterno in sola lettura. Non committare mai su di esso.
-  Per aggiornarlo: `git submodule update --remote core-karpathy`
-- Ogni genome-submodule ha il proprio `AGENTS.md` con le regole specifiche del dominio.
-- Le ricerche cross-genome (es. pattern di codice che impattano la finanza) vanno documentate
-  con wikilink inter-genome usando path relativi: `../genome-finance/wiki/concepts/...`
-- Gli agenti operano **sempre** su un singolo genome alla volta, salvo query cross-genome
-  esplicite.
+---
 
-## Aggiornamento dei Submodule
+## Cross-Genome Rules
 
-```bash
-# Aggiorna core-karpathy all'ultimo commit del gist
+- **core-karpathy/** is a read-only external reference. Never commit to it.
+  To update it to the latest gist commit:
+  \`\`\`bash
+  git submodule update --remote core-karpathy
+  \`\`\`
+
+- Agents operate on **one genome at a time** unless a cross-genome query is
+  explicitly requested by the operator.
+
+- Cross-genome wikilinks use relative paths:
+  \`\`\`
+  [[../genome-finance/wiki/concepts/risk-management]]
+  \`\`\`
+
+- The PRIVATE_CONTEXT toggle is **per-genome and per-session**.
+  Enabling it for genome-finance does not enable it for genome-dev.
+  Enabling it implies the relevant genome is also unlocked via git-crypt.
+
+- Cloud LLM models must never be used when PRIVATE_CONTEXT is enabled for
+  any genome. Private data must not leave the local network.
+
+---
+
+## Submodule Operations
+
+\`\`\`bash
+# Update core-karpathy to the latest gist commit
 git submodule update --remote core-karpathy
 
-# Aggiorna tutti i genome all'ultimo commit del loro main
+# Update all genomes to their latest main commit
 git submodule update --remote
 
-# Dopo l'aggiornamento, registra i nuovi puntatori nel master
+# Record the updated submodule pointers in the master repo
 git add .
 git commit -m "chore: update submodule pointers"
-```
+git push
+\`\`\`
 
-## Clonare il Repository con tutti i Submodule
+---
 
-```bash
-git clone --recurse-submodules https://git.keruhomelab.com/keru/master-knowledge-genome.git
-```
+## Cloning
 
-## Clonare un Solo Genome (Sparse)
+\`\`\`bash
+# Full clone with all submodules (your laptop, fresh setup)
+git clone --recurse-submodules \\
+  ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git
 
-```bash
-# Solo genome-dev, senza scaricare finance o homelab
-git clone https://git.keruhomelab.com/keru/genome-dev.git
-```
+# After cloning, unlock each genome you need access to:
+cd master-knowledge-genome/genome-dev
+git-crypt unlock /path/to/genome-dev.key
+
+# Or with runtime injection from Vaultwarden (AI server — no key on disk):
+git-crypt unlock <(bws secret get "BWS_SECRET_ID_GENOME_DEV" | jq -r '.value')
+
+# Clone a single genome (for a collaborator who only needs genome-dev):
+git clone ${FORGEJO_URL}/${FORGEJO_USER}/genome-dev.git
+# They will see encrypted blobs in private/ — correct and expected behaviour.
+\`\`\`
+
+---
+
+## Key Management Reference
+
+| Genome | Key File | Vaultwarden Entry (suggested) |
+|--------|----------|-------------------------------|
+| genome-dev | genome-dev.key | Knowledge Genome / genome-dev key |
+| genome-finance | genome-finance.key | Knowledge Genome / genome-finance key |
+| genome-homelab | genome-homelab.key | Knowledge Genome / genome-homelab key |
+
+Symmetric keys are binary files. To store in Vaultwarden Secrets Manager:
+\`\`\`bash
+base64 < genome-dev.key | bws secret create "GENOME_KEY_DEV"
+\`\`\`
+To retrieve and decode for manual unlock:
+\`\`\`bash
+bws secret get "BWS_SECRET_ID" | jq -r '.value' | base64 -d > /tmp/genome-dev.key
+git-crypt unlock /tmp/genome-dev.key
+rm /tmp/genome-dev.key
+\`\`\`
 EOF
 
-# README minimo
+# ── README ───────────────────────────────────────────────────────────────────
 cat > README.md << 'EOF'
-# Master Knowledge Genome
+# master-knowledge-genome
 
-Archivio radice del Knowledge Genome personale basato sul pattern [LLM Wiki di Karpathy](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
+Root repository for the personal Knowledge Genome.
+Based on [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-Leggi `AGENTS.md` per la documentazione operativa.
+See `AGENTS.md` for the full operational schema.
 EOF
 
 git add AGENTS.md README.md
 git commit -m "chore: init master repo with global AGENTS.md"
 
 # =============================================================================
-step "5/6 — Aggiunta submodule core-karpathy e genome"
+step "5/7 — Adding core-karpathy submodule (Karpathy gist)"
 # =============================================================================
 
-info "Aggiungendo core-karpathy dal gist di Karpathy..."
+info "Adding core-karpathy from Karpathy's gist..."
 git submodule add "${GIST_URL}" core-karpathy
-success "core-karpathy aggiunto."
+success "core-karpathy submodule added."
 
-info "Aggiungendo genome-submodule da Forgejo..."
+# =============================================================================
+step "6/7 — Adding genome submodules"
+# =============================================================================
+
 for genome in "${GENOMES[@]}"; do
   git submodule add \
     "${FORGEJO_URL}/${FORGEJO_USER}/${genome}.git" \
     "${genome}"
-  success "${genome} aggiunto come submodule."
+  success "${genome} added as submodule."
 done
 
-git add .gitmodules
-git add core-karpathy genome-dev genome-finance genome-homelab
+git add .gitmodules core-karpathy "${GENOMES[@]}"
 git commit -m "feat: add core-karpathy gist and genome submodules"
 
 # =============================================================================
-step "6/6 — Push finale del master"
+step "7/7 — Pushing master repository"
 # =============================================================================
 
 git push -u origin main
-success "master-knowledge-genome pushato su Forgejo."
+success "master-knowledge-genome pushed to Forgejo."
 
 # =============================================================================
+# FINAL SUMMARY
+# =============================================================================
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  Setup completato!${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${GREEN}  Setup complete.${NC}"
+echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  Repository creati su Forgejo:"
-echo "  → ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}"
-echo "  → ${FORGEJO_URL}/${FORGEJO_USER}/genome-dev"
-echo "  → ${FORGEJO_URL}/${FORGEJO_USER}/genome-finance"
-echo "  → ${FORGEJO_URL}/${FORGEJO_USER}/genome-homelab"
+echo "  Repositories on Forgejo:"
+echo -e "  → ${CYAN}${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}${NC}"
+for genome in "${GENOMES[@]}"; do
+  echo -e "  → ${CYAN}${FORGEJO_URL}/${FORGEJO_USER}/${genome}${NC}"
+done
 echo ""
-echo "  Prossimi passi:"
-echo "  1. Clona il master sul laptop con Obsidian:"
-echo "     git clone --recurse-submodules \\"
-echo "       ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git"
+echo -e "  ${RED}${BOLD}CRITICAL — git-crypt keys (act now):${NC}"
+for genome in "${GENOMES[@]}"; do
+  echo "    ${KEYS_DIR}/${genome}.key"
+done
 echo ""
-echo "  2. Installa il plugin 'obsidian-git' e puntalo alla root del clone."
+echo "  ┌─────────────────────────────────────────────────────────────┐"
+echo "  │  1. Upload each .key to Vaultwarden (vault.keruhomelab.com) │"
+echo "  │     Use: base64 < <genome>.key | bws secret create \"name\"   │"
+echo "  │  2. Delete keys from disk: rm ${KEYS_DIR}/*.key  │"
+echo "  │  3. Test encryption: cd genome-dev && git-crypt lock         │"
+echo "  │     Try to cat raw/private/.gitkeep — you should see binary  │"
+echo "  │     Then unlock: git-crypt unlock /path/to/genome-dev.key    │"
+echo "  └─────────────────────────────────────────────────────────────┘"
 echo ""
-echo "  3. Configura il webhook su Forgejo:"
-echo "     genome-dev → Settings → Webhooks → Add Webhook"
-echo "     Payload URL: http://10.0.10.20:5678/webhook/<uuid-n8n>"
-echo "     Trigger: Push events"
+echo "  Next steps:"
 echo ""
-echo "  4. Aggiorna AGENTS.md di ciascun genome con il dominio specifico."
+echo "  1. Clone on your laptop with Obsidian:"
+echo "       git clone --recurse-submodules \\"
+echo "         ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git"
+echo "       cd ${MASTER_REPO}/genome-dev"
+echo "       git-crypt unlock /path/to/genome-dev.key"
+echo ""
+echo "  2. Open the clone root in Obsidian. Install 'obsidian-git' plugin."
+echo "     Point it to the genome subfolder you work in most."
+echo ""
+echo "  3. Fill in the 'Scope' field in each genome's AGENTS.md."
+echo ""
+echo "  4. Set up Forgejo webhooks to trigger n8n on push:"
+echo "       Per genome: Settings → Webhooks → Add Webhook"
+echo "       Payload URL: http://10.0.10.20:5678/webhook/<n8n-uuid>"
+echo "       Content type: application/json — Trigger: Push events"
+echo ""
+echo "  5. On the AI VM (when ready):"
+echo "       git clone --recurse-submodules \\"
+echo "         ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git"
+echo "       cd ${MASTER_REPO}/genome-dev"
+echo "       git-crypt unlock <(bws secret get \"BWS_ID\" | jq -r '.value')"
 echo ""
