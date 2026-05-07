@@ -1,50 +1,137 @@
 #!/usr/bin/env bash
 # =============================================================================
 # setup-knowledge-genome.sh
-# Crea l'intera struttura del Knowledge Genome su Forgejo (keruhomelab.com)
+# Bootstraps the full Knowledge Genome repository architecture on Forgejo.
 #
-# PREREQUISITI:
-#   - git installato in locale
-#   - curl installato in locale
-#   - Accesso a git.keruhomelab.com (LAN o tunnel Cloudflare)
-#   - Un token Forgejo con permessi "repo" (Settings → Applications → Tokens)
+# WHAT THIS SCRIPT DOES:
+#   1. Creates 4 repositories on Forgejo via REST API:
+#        master-knowledge-genome  (root, orchestrator)
+#        genome-dev               (web dev, Angular, TUI, software architecture)
+#        genome-finance           (personal finance, investments, market analysis)
+#        genome-homelab           (Keru infrastructure, network, architecture logs)
+#   2. Scaffolds each genome with:
+#        - raw/{articles,transcripts,code-packs,assets}/  (plaintext, open to collaborators)
+#        - raw/private/                                    (AES-256-CTR encrypted via git-crypt)
+#        - wiki/{sources,entities,concepts,queries}/       (agent-maintained, plaintext)
+#        - wiki/private/                                   (AES-256-CTR encrypted via git-crypt)
+#        - .gitattributes                                  (declares encryption rules)
+#        - .git/hooks/pre-commit                          (fail-safe: blocks plaintext leaks)
+#        - AGENTS.md                                       (agent contract + PRIVATE_CONTEXT toggle)
+#        - wiki/index.md, wiki/log.md
+#   3. Exports a symmetric git-crypt key for each genome.
+#   4. Builds the master repo with core-karpathy (Karpathy gist) and all genomes as submodules.
 #
-# ESECUZIONE:
+# PREREQUISITES:
+#   - git          (any recent version)
+#   - git-crypt    (apt install git-crypt  /  brew install git-crypt)
+#   - curl
+#   - jq           (apt install jq  /  brew install jq)
+#   - Access to git.keruhomelab.com (LAN VLAN 10 or Cloudflare tunnel)
+#   - A Forgejo API token with "repo" scope:
+#     Forgejo → Settings → Applications → Access Tokens → Generate Token
+#
+# OPTIONAL (for runtime key injection — recommended for the AI server):
+#   - bws  (Bitwarden Secrets Manager CLI)
+#     https://bitwarden.com/help/secrets-manager-cli/
+#
+# USAGE:
 #   chmod +x setup-knowledge-genome.sh
-#   FORGEJO_TOKEN="il_tuo_token" ./setup-knowledge-genome.sh
+#   FORGEJO_TOKEN="your_token_here" ./setup-knowledge-genome.sh
+#
+# KEY MANAGEMENT (CRITICAL — read before running):
+#   This script exports one symmetric key per genome to:
+#     ~/knowledge-genome-setup/keys/<genome-name>.key
+#   These keys are the ONLY way to decrypt raw/private/ and wiki/private/.
+#   Losing them means permanent loss of access to encrypted content.
+#
+#   MANDATORY STEPS AFTER SETUP:
+#     1. Upload each *.key file to Vaultwarden (vault.keruhomelab.com).
+#        Store them as "Custom Fields" or secure notes under a "Knowledge Genome" item.
+#     2. Delete the key files from disk:
+#          rm ~/knowledge-genome-setup/keys/*.key
+#     3. To unlock on any machine:
+#          git-crypt unlock /path/to/<genome>.key
+#     4. To unlock on the AI server WITHOUT persisting the key to disk
+#        (recommended — requires bws CLI and a Vaultwarden Secrets Manager project):
+#          git-crypt unlock <(bws secret get "BWS_SECRET_ID" | jq -r '.value')
+#        This passes the key through a kernel file descriptor (process substitution),
+#        meaning it is never written to any non-volatile storage.
+#
+# RUNTIME SECURITY MODEL:
+#   - On Forgejo (remote): files in raw/private/ and wiki/private/ are opaque binary blobs.
+#   - Collaborators who clone without the key see plaintext everywhere else,
+#     and encrypted binary in private/ — git handles them gracefully (no errors).
+#   - On your laptop and the AI VM: once unlocked, files are transparently decrypted
+#     by the git smudge filter. Obsidian and the agent read them as normal Markdown.
+#   - The encryption does NOT protect against a full server compromise where an
+#     attacker has root access to a machine where the repo is already unlocked.
+#     This is why runtime injection (step 4 above) is the strongest configuration.
 # =============================================================================
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# CONFIGURAZIONE — modifica solo questa sezione
+# CONFIGURATION — edit only this section
 # ---------------------------------------------------------------------------
 FORGEJO_URL="https://git.keruhomelab.com"
-FORGEJO_USER="keru"                           # il tuo username su Forgejo
-FORGEJO_TOKEN="${FORGEJO_TOKEN:?Errore: esporta FORGEJO_TOKEN prima di eseguire}"
+FORGEJO_USER="keru"
+FORGEJO_TOKEN="${FORGEJO_TOKEN:?Error: export FORGEJO_TOKEN before running this script.}"
 GIST_URL="https://gist.github.com/442a6bf555914893e9891c11519de94f.git"
-WORK_DIR="${HOME}/knowledge-genome-setup"     # cartella di lavoro locale temporanea
+WORK_DIR="${HOME}/knowledge-genome-setup"
+KEYS_DIR="${WORK_DIR}/keys"
 
-# Nomi dei repository che verranno creati su Forgejo
 MASTER_REPO="master-knowledge-genome"
+
+# Each entry is: "<repo-name>|<description>"
+# Visibility is handled at FILE level via git-crypt, not at repo level.
+# All repos are created as private on Forgejo as a first layer of defence.
+declare -A GENOME_DESCRIPTIONS=(
+  ["genome-dev"]="Knowledge Genome: web development, TUI, Angular, software architecture"
+  ["genome-finance"]="Knowledge Genome: personal finance, investments, market analysis"
+  ["genome-homelab"]="Knowledge Genome: Keru infrastructure, network configs, architecture logs"
+)
 GENOMES=("genome-dev" "genome-finance" "genome-homelab")
 
 # ---------------------------------------------------------------------------
-# COLORI PER OUTPUT
+# OUTPUT HELPERS
 # ---------------------------------------------------------------------------
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
-info()    { echo -e "${CYAN}[INFO]${NC}  $*"; }
-success() { echo -e "${GREEN}[OK]${NC}    $*"; }
-step()    { echo -e "\n${YELLOW}━━━ $* ━━━${NC}"; }
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
+RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
+info()    { echo -e "${CYAN}[INFO]${NC}   $*"; }
+success() { echo -e "${GREEN}[OK]${NC}     $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}   $*"; }
+error()   { echo -e "${RED}[ERROR]${NC}  $*" >&2; }
+step()    { echo -e "\n${BOLD}${YELLOW}━━━ $* ━━━${NC}"; }
 
 # ---------------------------------------------------------------------------
-# FUNZIONE: crea un repository su Forgejo via API
-# Uso: forgejo_create_repo <nome_repo> <descrizione> <privato: true|false>
+# DEPENDENCY CHECK
+# ---------------------------------------------------------------------------
+check_deps() {
+  local missing=()
+  for cmd in git git-crypt curl jq; do
+    command -v "$cmd" &>/dev/null || missing+=("$cmd")
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    error "Missing required tools: ${missing[*]}"
+    echo "  Ubuntu/Debian: sudo apt install ${missing[*]}"
+    echo "  macOS:         brew install ${missing[*]}"
+    exit 1
+  fi
+  if ! command -v bws &>/dev/null; then
+    warn "'bws' (Bitwarden Secrets Manager CLI) is not installed."
+    warn "Runtime key injection will require manual key file path."
+    warn "Install: https://bitwarden.com/help/secrets-manager-cli/"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# FUNCTION: create a repository on Forgejo via REST API
+# Usage: forgejo_create_repo <name> <description> <private: true|false>
 # ---------------------------------------------------------------------------
 forgejo_create_repo() {
   local name="$1" desc="$2" private="$3"
-  local http_code
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+  local response http_code
+  response=$(curl -s -w "\n%{http_code}" \
     -X POST "${FORGEJO_URL}/api/v1/user/repos" \
     -H "Authorization: token ${FORGEJO_TOKEN}" \
     -H "Content-Type: application/json" \
@@ -55,45 +142,148 @@ forgejo_create_repo() {
       \"auto_init\": false,
       \"default_branch\": \"main\"
     }")
+  http_code=$(echo "$response" | tail -1)
 
-  if [[ "$http_code" == "201" ]]; then
-    success "Repository '${name}' creato su Forgejo."
-  elif [[ "$http_code" == "409" ]]; then
-    info "Repository '${name}' già esistente — skip creazione."
-  else
-    echo "Errore HTTP ${http_code} durante la creazione di '${name}'." >&2
-    exit 1
-  fi
+  case "$http_code" in
+    201) success "Repository '${name}' created on Forgejo." ;;
+    409) info    "Repository '${name}' already exists — skipping." ;;
+    *)   error   "HTTP ${http_code} while creating '${name}'. Check token and Forgejo connectivity."; exit 1 ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
-# FUNZIONE: crea le directory e i file template di un genome
-# Uso: scaffold_genome <path_locale>
+# FUNCTION: write the pre-commit hook that blocks accidental plaintext leaks
+# Usage: write_precommit_hook <repo_path>
+#
+# How it works:
+#   Before every commit, the hook inspects the list of staged files.
+#   If any staged file lives under raw/private/ or wiki/private/, it runs
+#   `git-crypt status` on that file. If git-crypt reports it as "not encrypted",
+#   the commit is aborted with a clear error message.
+#   This is the "fail-safe" described in the architecture document.
+# ---------------------------------------------------------------------------
+write_precommit_hook() {
+  local repo_path="$1"
+  local hook_path="${repo_path}/.git/hooks/pre-commit"
+
+  cat > "${hook_path}" << 'HOOKEOF'
+#!/usr/bin/env bash
+# pre-commit hook: blocks plaintext commits to private/ directories.
+# Installed by setup-knowledge-genome.sh — do not delete.
+
+set -euo pipefail
+
+PRIVATE_PATTERNS=("raw/private/" "wiki/private/")
+FAILED=0
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+
+if [[ -z "$STAGED_FILES" ]]; then
+  exit 0
+fi
+
+for pattern in "${PRIVATE_PATTERNS[@]}"; do
+  while IFS= read -r file; do
+    if [[ "$file" == ${pattern}* ]]; then
+      # Ask git-crypt if this specific file is encrypted
+      STATUS=$(git-crypt status "$file" 2>/dev/null || echo "error")
+      if echo "$STATUS" | grep -q "not encrypted"; then
+        echo ""
+        echo "  ┌─────────────────────────────────────────────────────┐"
+        echo "  │  COMMIT BLOCKED — PLAINTEXT LEAK DETECTED           │"
+        echo "  └─────────────────────────────────────────────────────┘"
+        echo ""
+        echo "  File:    $file"
+        echo "  Reason:  This file is in a private/ directory but is NOT"
+        echo "           being encrypted by git-crypt."
+        echo ""
+        echo "  Likely cause: .gitattributes rules are missing or incorrect."
+        echo ""
+        echo "  To fix:"
+        echo "    1. Verify .gitattributes contains:"
+        echo "         raw/private/** filter=git-crypt diff=git-crypt"
+        echo "         wiki/private/** filter=git-crypt diff=git-crypt"
+        echo "    2. Run: git-crypt status"
+        echo "    3. If the repo is locked, unlock it first:"
+        echo "         git-crypt unlock /path/to/<genome>.key"
+        echo ""
+        FAILED=1
+      fi
+    fi
+  done <<< "$STAGED_FILES"
+done
+
+if [[ "$FAILED" -ne 0 ]]; then
+  echo "  Commit aborted. Fix the issues above before retrying."
+  echo ""
+  exit 1
+fi
+
+exit 0
+HOOKEOF
+
+  chmod +x "${hook_path}"
+  success "Pre-commit hook installed: ${repo_path}/.git/hooks/pre-commit"
+}
+
+# ---------------------------------------------------------------------------
+# FUNCTION: scaffold a genome repository
+# Creates all directories, template files, .gitattributes, hook, and AGENTS.md
+# Usage: scaffold_genome <local_path>
 # ---------------------------------------------------------------------------
 scaffold_genome() {
   local base="$1"
   local name
   name=$(basename "$base")
 
-  # Struttura directory
+  # ── Directory structure ──────────────────────────────────────────────────
   mkdir -p \
     "${base}/raw/articles" \
     "${base}/raw/transcripts" \
     "${base}/raw/code-packs" \
     "${base}/raw/assets" \
+    "${base}/raw/private" \
     "${base}/wiki/sources" \
     "${base}/wiki/entities" \
     "${base}/wiki/concepts" \
-    "${base}/wiki/queries"
+    "${base}/wiki/queries" \
+    "${base}/wiki/private"
 
-  # .gitkeep per cartelle vuote (git non traccia cartelle vuote)
+  # .gitkeep ensures Git tracks empty directories
   for dir in \
-    raw/articles raw/transcripts raw/code-packs raw/assets \
-    wiki/sources wiki/entities wiki/concepts wiki/queries; do
+    raw/articles raw/transcripts raw/code-packs raw/assets raw/private \
+    wiki/sources wiki/entities wiki/concepts wiki/queries wiki/private; do
     touch "${base}/${dir}/.gitkeep"
   done
 
-  # wiki/index.md — catalogo master del genome
+  # ── .gitattributes ────────────────────────────────────────────────────────
+  # This file is the cryptographic contract of the repository.
+  # The clean filter encrypts files before they enter the Git object store.
+  # The smudge filter decrypts them when checked out locally.
+  # WARNING: this file must never be modified carelessly.
+  # Any file added to raw/private/ or wiki/private/ BEFORE git-crypt is
+  # initialised would be stored in plaintext. The pre-commit hook prevents this.
+  cat > "${base}/.gitattributes" << 'EOF'
+# =============================================================================
+# git-crypt encryption rules
+# Files matching these patterns are encrypted with AES-256-CTR before being
+# stored in the Git object store. They are transparently decrypted on checkout
+# for authorised users who have run `git-crypt unlock`.
+#
+# Collaborators WITHOUT the key:
+#   - Can read and contribute to everything outside private/
+#   - See binary (illegible) blobs for files inside private/
+#   - Git operations (add, commit, push, pull) work normally for them
+#
+# DO NOT modify or remove these rules without re-encrypting all private files.
+# =============================================================================
+
+raw/private/**   filter=git-crypt diff=git-crypt
+wiki/private/**  filter=git-crypt diff=git-crypt
+EOF
+
+  # ── wiki/index.md ────────────────────────────────────────────────────────
   cat > "${base}/wiki/index.md" << EOF
 ---
 title: "Index — ${name}"
