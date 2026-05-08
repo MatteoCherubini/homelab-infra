@@ -31,8 +31,10 @@
 #     Forgejo → Settings → Applications → Access Tokens → Generate Token
 #
 # OPTIONAL (for runtime key injection — recommended for the AI server):
-#   - bws  (Bitwarden Secrets Manager CLI)
-#     https://bitwarden.com/help/secrets-manager-cli/
+#   - bw   (Bitwarden CLI — standard password manager CLI, works with Vaultwarden)
+#     https://bitwarden.com/help/cli/
+#     NOTE: this is NOT 'bws' (Bitwarden Secrets Manager CLI), which is a separate
+#     commercial product that Vaultwarden does not implement. Always use 'bw'.
 #
 # USAGE:
 #   chmod +x setup-knowledge-genome.sh
@@ -52,10 +54,28 @@
 #     3. To unlock on any machine:
 #          git-crypt unlock /path/to/<genome>.key
 #     4. To unlock on the AI server WITHOUT persisting the key to disk
-#        (recommended — requires bws CLI and a Vaultwarden Secrets Manager project):
-#          git-crypt unlock <(bws secret get "BWS_SECRET_ID" | jq -r '.value')
-#        This passes the key through a kernel file descriptor (process substitution),
-#        meaning it is never written to any non-volatile storage.
+#        (recommended — requires bw CLI authenticated against your Vaultwarden instance):
+#
+#          # One-time server config per machine:
+#          bw config server https://vault.keruhomelab.com
+#
+#          # Authenticate with API key (non-interactive, suitable for scripts):
+#          export BW_CLIENTID="user.xxxxxxxx"
+#          export BW_CLIENTSECRET="xxxxxxxx"
+#          bw login --apikey
+#
+#          # Unlock and get session key:
+#          export BW_SESSION=$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+#
+#          # Inject key via process substitution (never written to disk):
+#          git-crypt unlock <(bw get notes "genome-dev key" --session "$BW_SESSION" | base64 -d)
+#
+#        The <(...) syntax creates a kernel file descriptor (/dev/fd/N) that exists
+#        only in memory for the duration of the process. No data is written to disk.
+#
+#        IMPORTANT: 'bw' is the standard Bitwarden CLI and works with Vaultwarden.
+#        Do NOT use 'bws' — that is the Bitwarden Secrets Manager CLI, a separate
+#        commercial product that Vaultwarden does not implement.
 #
 # RUNTIME SECURITY MODEL:
 #   - On Forgejo (remote): files in raw/private/ and wiki/private/ are opaque binary blobs.
@@ -117,10 +137,11 @@ check_deps() {
     echo "  macOS:         brew install ${missing[*]}"
     exit 1
   fi
-  if ! command -v bws &>/dev/null; then
-    warn "'bws' (Bitwarden Secrets Manager CLI) is not installed."
-    warn "Runtime key injection will require manual key file path."
-    warn "Install: https://bitwarden.com/help/secrets-manager-cli/"
+  if ! command -v bw &>/dev/null; then
+    warn "'bw' (Bitwarden CLI) is not installed."
+    warn "Runtime key injection from Vaultwarden will require manual key file path."
+    warn "Install: https://bitwarden.com/help/cli/"
+    warn "Note: use 'bw', NOT 'bws' — bws is the Secrets Manager CLI and does NOT work with Vaultwarden."
   fi
 }
 
@@ -403,11 +424,28 @@ PRIVATE_CONTEXT: enabled
 
 ### On the AI server (runtime key injection):
 The symmetric git-crypt key must never be stored as a persistent file on
-the AI VM. Inject it at session start using Vaultwarden + bws CLI:
+the AI VM. Inject it at session start using the 'bw' CLI against Vaultwarden:
+
 \`\`\`bash
-# Unlock without writing the key to disk (process substitution)
-git-crypt unlock <(bws secret get "BWS_SECRET_ID_FOR_${name^^}" | jq -r '.value')
+# One-time config per machine (point bw at your self-hosted Vaultwarden)
+bw config server https://vault.keruhomelab.com
+
+# Authenticate with API key (non-interactive)
+export BW_CLIENTID="user.xxxxxxxx"
+export BW_CLIENTSECRET="xxxxxxxx"
+bw login --apikey
+
+# Unlock vault and capture session key
+export BW_SESSION=\$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+
+# Inject the git-crypt key via process substitution — never touches disk
+git-crypt unlock <(bw get notes "${name} key" --session "\$BW_SESSION" | base64 -d)
 \`\`\`
+
+IMPORTANT: use 'bw' (standard Bitwarden CLI), NOT 'bws'.
+'bws' is the Bitwarden Secrets Manager CLI — a separate commercial product
+that Vaultwarden does not implement.
+
 When the session ends, or if PRIVATE_CONTEXT transitions to disabled, run:
 \`\`\`bash
 git-crypt lock
@@ -673,9 +711,15 @@ for genome in "${GENOMES[@]}"; do
   git commit -m "chore: initial scaffold — git-crypt active on private/"
 
   # Export the symmetric key before pushing.
-  # The key is a binary file — store it in Vaultwarden as a secure note
-  # or encode it to base64 for the bws Secrets Manager:
-  #   base64 < keys/<genome>.key | bws secret create "GENOME_KEY_<NAME>" -
+  # Store in Vaultwarden as a secure note with the base64-encoded key content.
+  # To store it:
+  #   1. base64 < keys/<genome>.key   (copy the output)
+  #   2. Create a Secure Note in Vaultwarden named "<genome> key"
+  #      with that base64 string as the note body.
+  # To retrieve at runtime on the AI server (never writes to disk):
+  #   bw config server https://vault.keruhomelab.com
+  #   export BW_SESSION=$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+  #   git-crypt unlock <(bw get notes "<genome> key" --session "$BW_SESSION" | base64 -d)
   git-crypt export-key "${KEYS_DIR}/${genome}.key"
   success "Symmetric key exported: ${KEYS_DIR}/${genome}.key"
 
@@ -786,7 +830,9 @@ cd master-knowledge-genome/genome-dev
 git-crypt unlock /path/to/genome-dev.key
 
 # Or with runtime injection from Vaultwarden (AI server — no key on disk):
-git-crypt unlock <(bws secret get "BWS_SECRET_ID_GENOME_DEV" | jq -r '.value')
+bw config server https://vault.keruhomelab.com
+export BW_SESSION=\$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+git-crypt unlock <(bw get notes "genome-dev key" --session "\$BW_SESSION" | base64 -d)
 
 # Clone a single genome (for a collaborator who only needs genome-dev):
 git clone ${FORGEJO_URL}/${FORGEJO_USER}/genome-dev.git
@@ -803,16 +849,27 @@ git clone ${FORGEJO_URL}/${FORGEJO_USER}/genome-dev.git
 | genome-finance | genome-finance.key | Knowledge Genome / genome-finance key |
 | genome-homelab | genome-homelab.key | Knowledge Genome / genome-homelab key |
 
-Symmetric keys are binary files. To store in Vaultwarden Secrets Manager:
+Symmetric keys are binary files. To store in Vaultwarden as a Secure Note:
 \`\`\`bash
-base64 < genome-dev.key | bws secret create "GENOME_KEY_DEV"
+# Encode to base64 and copy the output
+base64 < genome-dev.key
+# Then create a Secure Note in Vaultwarden named "genome-dev key"
+# with that base64 string as the note body.
 \`\`\`
 To retrieve and decode for manual unlock:
 \`\`\`bash
-bws secret get "BWS_SECRET_ID" | jq -r '.value' | base64 -d > /tmp/genome-dev.key
+bw config server https://vault.keruhomelab.com
+export BW_SESSION=\$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+bw get notes "genome-dev key" --session "\$BW_SESSION" | base64 -d > /tmp/genome-dev.key
 git-crypt unlock /tmp/genome-dev.key
 rm /tmp/genome-dev.key
 \`\`\`
+For zero-disk-write runtime injection (recommended on AI server):
+\`\`\`bash
+git-crypt unlock <(bw get notes "genome-dev key" --session "\$BW_SESSION" | base64 -d)
+\`\`\`
+NOTE: always use 'bw' (standard Bitwarden CLI). 'bws' is the Secrets Manager CLI
+and does NOT work with self-hosted Vaultwarden.
 EOF
 
 # ── README ───────────────────────────────────────────────────────────────────
@@ -877,8 +934,9 @@ for genome in "${GENOMES[@]}"; do
 done
 echo ""
 echo "  ┌─────────────────────────────────────────────────────────────┐"
-echo "  │  1. Upload each .key to Vaultwarden (vault.keruhomelab.com) │"
-echo "  │     Use: base64 < <genome>.key | bws secret create \"name\"   │"
+echo "  │  1. Encode key: base64 < <genome>.key  (copy output)           │"
+echo "  │     Create Secure Note in Vaultwarden named \"<genome> key\"    │"
+echo "  │     with the base64 string as the note body.                  │"
 echo "  │  2. Delete keys from disk: rm ${KEYS_DIR}/*.key  │"
 echo "  │  3. Test encryption: cd genome-dev && git-crypt lock         │"
 echo "  │     Try to cat raw/private/.gitkeep — you should see binary  │"
@@ -907,5 +965,7 @@ echo "  5. On the AI VM (when ready):"
 echo "       git clone --recurse-submodules \\"
 echo "         ${FORGEJO_URL}/${FORGEJO_USER}/${MASTER_REPO}.git"
 echo "       cd ${MASTER_REPO}/genome-dev"
-echo "       git-crypt unlock <(bws secret get \"BWS_ID\" | jq -r '.value')"
+echo "       bw config server https://vault.keruhomelab.com"
+echo "       export BW_SESSION=\$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)"
+echo "       git-crypt unlock <(bw get notes \"<genome> key\" --session \"\$BW_SESSION\" | base64 -d)"
 echo ""
