@@ -17,7 +17,3 @@ services:
       FORGEJO__server__SSH_PORT: "22"
     networks:
       - homelab
-
-networks:
-  homelab:
-    external: true
