@@ -16,11 +16,8 @@ services:
       FORGEJO__server__SSH_DOMAIN: "git.keruhomelab.com"
       FORGEJO__server__SSH_PORT: "22"
     networks:
-      homelab:
-        aliases:
-          - forgejo
+      - homelab
 
 networks:
   homelab:
     external: true
-    name: homelab-infra_homelab
