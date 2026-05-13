@@ -28,3 +28,6 @@ networks:
     ipam:
       config:
         - subnet: ${HOMELAB_SUBNET:-172.20.0.0/16}
+
+volumes:
+  n8n_known_hosts:
