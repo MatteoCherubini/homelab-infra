@@ -87,15 +87,24 @@ services:
     volumes:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
     environment:
+      # ── Database ──────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
       DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
       DB_POSTGRESDB_USER: ${N8N_DB_USER}
       DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      # ── Queue ─────────────────────────────────────────────────
       EXECUTIONS_MODE: queue
       QUEUE_BULL_REDIS_HOST: n8n-redis
       QUEUE_BULL_REDIS_PORT: 6379
+      # ── Encryption ────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       GENERIC_TIMEZONE: ${TZ}
     networks:
       - homelab
+
+networks:
+  homelab
+
+volumes:
+  n8n_known_hosts:
