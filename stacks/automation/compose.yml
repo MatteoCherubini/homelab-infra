@@ -70,7 +70,15 @@ services:
       N8N_RUNNERS_MODE: external
       N8N_RUNNERS_BROKER_LISTEN_ADDRESS: "0.0.0.0"
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      # ── Encryption ────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      # ── Sicurezza SSRF ────────────────────────────────────────
+      N8N_SSRF_PROTECTION_ENABLED: ${N8N_SSRF_PROTECTION_ENABLED}
+      N8N_SSRF_BLOCKED_IP_RANGES: ${N8N_SSRF_BLOCKED_IP_RANGES}
+      N8N_SSRF_ALLOWED_HOSTNAMES: ${N8N_SSRF_ALLOWED_HOSTNAMES}
+      # ── Webhook HMAC ──────────────────────────────────────────
+      N8N_WEBHOOK_HMAC_SECRET: ${N8N_WEBHOOK_HMAC_SECRET}
+      # ── Performance / Storage ─────────────────────────────────
       NODE_OPTIONS: --max-old-space-size=1024
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: 168
