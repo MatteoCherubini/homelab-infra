@@ -54,7 +54,7 @@ services:
       - "${N8N_PORT:-5678}:5678"
     volumes:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
-      - n8n_known_hosts:/home/node/.ssh/known_hosts
+      - n8n_known_hosts:/home/node/.ssh
     environment:
       # ── Database ──────────────────────────────────────────────
       DB_TYPE: postgresdb
@@ -114,9 +114,3 @@ services:
       GENERIC_TIMEZONE: ${TZ}
     networks:
       - homelab
-
-networks:
-  homelab
-
-volumes:
-  n8n_known_hosts:
