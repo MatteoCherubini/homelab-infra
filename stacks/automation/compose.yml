@@ -53,12 +53,15 @@ services:
       - "${N8N_PORT:-5678}:5678"
     volumes:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
+      - n8n_known_hosts:/home/node/.ssh/known_hosts
     environment:
+      # ── Database ──────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
       DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME}
       DB_POSTGRESDB_USER: ${N8N_DB_USER}
       DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      # ── Queue / Worker ────────────────────────────────────────
       EXECUTIONS_MODE: queue
       QUEUE_BULL_REDIS_HOST: n8n-redis
       QUEUE_BULL_REDIS_PORT: 6379
