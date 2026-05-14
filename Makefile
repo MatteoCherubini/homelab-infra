@@ -18,10 +18,8 @@ restart: ## Restart tutto
 logs: ## Log live (tutti)
 	docker compose logs -f --tail=50
 
-versions: ## Lista versioni correnti di tutti i servizi (JSON per n8n)
-	@docker compose config --format json | \
-	  jq -r '.services | to_entries[] | \
-	  "\(.key)\t\(.value.image)"' | sort
+versions: ## Lista versioni correnti di tutti i servizi
+	@docker compose config --format json | jq -r '.services | to_entries[] | "\(.key)\t\(.value.image)"' | sort
 
 ps: ## Stato servizi
 	docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
