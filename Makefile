@@ -37,6 +37,10 @@ check: ## Verifica prerequisiti e config
 	@echo ""
 	@grep -c "CHANGE_ME" .env && echo "⚠️  Ci sono password da cambiare nel .env!" || echo "✅ Nessun CHANGE_ME trovato"
 
+gpu-check: ## Verifica presenza GPU NVIDIA (usato da WF-5 prima del deploy)
+	@nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
+	  && echo "GPU_OK" || echo "GPU_MISSING"
+
 up-gpu: ## Avvia con supporto GPU NVIDIA
 	docker compose --profile gpu up -d
 
