@@ -13,6 +13,7 @@ services:
       POSTGRES_DB: ${N8N_DB_NAME}
       POSTGRES_USER: ${N8N_DB_USER}
       POSTGRES_PASSWORD: ${N8N_DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
     networks:
       - homelab
     healthcheck:
