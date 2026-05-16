@@ -7,7 +7,7 @@ name: immich
 services:
   immich-server:
     container_name: immich_server
-    image: ghcr.io/immich-app/immich-server:v2.7.5
+    image: ghcr.io/immich-app/immich-server:${IMMICH_SERVER_VERSION}
     restart: unless-stopped
     runtime: nvidia # Richiede NVIDIA Container Toolkit installato sull'host [7]
     volumes:
@@ -35,7 +35,7 @@ services:
   immich-machine-learning:
     container_name: immich_ml
     # Utilizzo del tag CUDA specifico per GPU NVIDIA 
-    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5-cuda
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_MACHINE_LEARNING_VERSION}
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/immich/ml-cache:/cache
@@ -56,7 +56,7 @@ services:
   immich-db:
     container_name: immich_db
     # Tag ufficiale PG16 + VectorChord verificato 
-    image: ghcr.io/immich-app/postgres:16-vectorchord0.5.3-pgvector0.8.1
+    image: ghcr.io/immich-app/postgres:${IMMICH_DB_VERSION}
     restart: unless-stopped
     environment:
       - POSTGRES_DB=${IMMICH_DB_NAME}
@@ -79,7 +79,7 @@ services:
   immich-redis:
     container_name: immich_redis
     # Valkey 9: Performance multithread e open source totale [1, 11]
-    image: docker.io/valkey/valkey:9-alpine
+    image: docker.io/valkey/valkey:${IMMICH_REDIS_VERSION}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
