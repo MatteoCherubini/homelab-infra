@@ -1,14 +1,9 @@
-# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 ──
-#
-# n8n v2 richiede:
-#   - Worker esterno per queue mode
-#   - PostgreSQL (SQLite/MySQL non supportati in v2)
-#   - Redis per queue mode
+# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 ──────────────────
 #
 # Ref: https://docs.n8n.io/2-0-breaking-changes/
+# ──────────────────────────────────────────────────────────────────────────────
 
 services:
-
   n8n-db:
     image: postgres:18-alpine
     restart: unless-stopped
