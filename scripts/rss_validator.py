@@ -22,7 +22,6 @@ def check_service(service: dict):
     name = service.get("display_name") or service.get("compose_name")
     rss_url = service.get("rss_url")
 
-    # Stato di default
     service["rss_check_ok"] = False
     service["rss_error_detail"] = None
 
