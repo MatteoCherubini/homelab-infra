@@ -36,42 +36,46 @@ def check_service(service: dict):
         return service
 
     try:
+        # Aggiungiamo un ritardo di 1.5s per evitare il rate-limiting di GitHub (429 Too Many Requests)
+        time.sleep(1.5)
+
         response = requests.get(rss_url, timeout=TIMEOUT, headers=HEADERS, allow_redirects=True)
-        body = response.text or ""
-        
+
+        # Se lo status non è 200, ci fermiamo subito senza leggere il body
         if response.status_code != 200:
             service["rss_error_detail"] = f"HTTP {response.status_code}"
-        elif "<html" in body.lower():
-            service["rss_error_detail"] = "Ricevuto HTML invece di XML"
+            return service
+
+        # Leggiamo il body con cautela per non riempire la RAM
+        body = response.text[:MAX_BODY_SIZE]
+
+        if "<html" in body.lower():
+            service["rss_error_detail"] = "Ricevuto HTML invece di XML (Possibile ban o rate limit)"
         elif not is_valid_xml_feed(body):
             service["rss_error_detail"] = "XML non valido o non è un Feed"
         else:
             service["rss_check_ok"] = True
-            
+
     except requests.exceptions.Timeout:
         service["rss_error_detail"] = "Timeout"
     except Exception as e:
-        service["rss_error_detail"] = str(type(e).__name__)
+        service["rss_error_detail"] = f"Errore interno: {str(type(e).__name__)}"
 
     return service
 
 def main():
-    # Legge l'input da n8n
     try:
         raw_input = sys.stdin.read()
-        if not raw_input:
-            print(json.dumps([]))
+        if not raw_input.strip():
+            print(json.dumps([{"error": "Input vuoto"}]))
             return
         services = json.loads(raw_input)
     except Exception as e:
-        print(json.dumps([{"error": f"Errore parsing input: {str(e)}"}]))
+        print(json.dumps([{"error": f"Errore parsing JSON: {str(e)}"}]))
         return
 
-    # Esegue il check per tutti i servizi ricevuti
     results = [check_service(s) for s in services]
-    
-    # Restituisce il JSON finale a n8n
-    print(json.dumps(results))
+    print(json.dumps(results, indent=2))
 
 if __name__ == "__main__":
     main()
