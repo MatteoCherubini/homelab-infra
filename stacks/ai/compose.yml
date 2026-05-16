@@ -4,7 +4,7 @@
 services:
 
   ollama:
-    image: ollama/ollama:0.21.0
+    image: ollama/ollama:${OLLAMA_VERSION}
     restart: unless-stopped
     profiles:
       - cpu
@@ -16,7 +16,7 @@ services:
       - homelab
 
   ollama-gpu:
-    image: ollama/ollama:0.21.0
+    image: ollama/ollama:${OLLAMA_VERSION}
     restart: unless-stopped
     profiles:
       - gpu
@@ -37,7 +37,7 @@ services:
           - ollama
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.8.12
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_VERSION}
     restart: unless-stopped
     ports:
       - "${OPENWEBUI_PORT:-8090}:8080"

@@ -4,7 +4,7 @@
 services:
 
   garage:
-    image: dxflrs/garage:v1.0.1
+    image: dxflrs/garage:${GARAGE_VERSION}
     restart: unless-stopped
     ports:
       - "${GARAGE_API_PORT:-3900}:3900"
@@ -18,7 +18,7 @@ services:
       - homelab
 
   kopia:
-    image: kopia/kopia:0.19
+    image: kopia/kopia:${KOPIA_VERSION}
     restart: unless-stopped
     ports:
       - "${KOPIA_PORT:-51515}:51515"

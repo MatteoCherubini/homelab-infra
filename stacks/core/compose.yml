@@ -3,7 +3,7 @@
 services:
 
   nginx:
-    image: jc21/nginx-proxy-manager:2.14.0
+    image: jc21/nginx-proxy-manager:${NGINX_VERSION}
     restart: unless-stopped
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
@@ -16,7 +16,7 @@ services:
       - homelab
 
   headscale:
-    image: headscale/headscale:0.25
+    image: headscale/headscale:${HEADSCALE_VERSION}
     restart: unless-stopped
     command: serve
     volumes:
@@ -28,7 +28,7 @@ services:
       - homelab
 
   headscale-ui:
-    image: ghcr.io/gurucomputing/headscale-ui:2025.01.20
+    image: ghcr.io/gurucomputing/headscale-ui:${HEADSCALE_UI_VERSION}
     restart: unless-stopped
     ports:
       - "${HEADSCALE_UI_PORT:-8086}:80"
@@ -36,7 +36,7 @@ services:
       - homelab
 
   portainer:
-    image: portainer/portainer-ce:2.25.1
+    image: portainer/portainer-ce:${PORTAINER_VERSION}
     restart: unless-stopped
     ports:
       - "${PORTAINER_PORT:-9000}:9000"
@@ -47,7 +47,7 @@ services:
       - homelab
 
   homepage:
-    image: ghcr.io/gethomepage/homepage:v0.10.9
+    image: ghcr.io/gethomepage/homepage:${HOMEPAGE_VERSION}
     restart: unless-stopped
     ports:
       - "${HOMEPAGE_PORT:-3000}:3000"
@@ -61,7 +61,7 @@ services:
     networks:
       - homelab
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run
