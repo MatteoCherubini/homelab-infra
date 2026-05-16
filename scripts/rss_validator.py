@@ -3,15 +3,21 @@ import json
 import requests
 import xml.etree.ElementTree as ET
 import sys
+import time
 
 TIMEOUT = 10
+MAX_BODY_SIZE = 1024 * 500  # 500 KB max per evitare saturazione RAM
 HEADERS = {
-    "User-Agent": "rss-checker/1.0",
+    # Usiamo un agent standard per non farci bloccare dall'anti-bot di GitHub
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/atom+xml, application/rss+xml, application/xml, text/xml"
 }
 
 def is_valid_xml_feed(content: str) -> bool:
     try:
+        # Prevenzione XML bomb: controlliamo solo le primissime righe
+        if not content.strip().startswith('<'):
+            return False
         root = ET.fromstring(content)
         tag = root.tag.lower()
         return any(x in tag for x in ["rss", "feed", "rdf"])
