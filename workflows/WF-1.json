@@ -1,0 +1,567 @@
+{
+  "name": "WF-1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -912,
+        -640
+      ],
+      "id": "05f96367-a12f-4cb2-bd94-cb485794e5c2",
+      "name": "Cron"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /opt/homelab-infra && make manifest-json"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        -640
+      ],
+      "id": "6185a66d-1c01-4d59-a4a1-d8376f5282b5",
+      "name": "SSH: make versions",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "service_versions",
+          "mode": "list",
+          "cachedResultName": "service_versions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_tracked": "={{ $json.is_tracked }}",
+            "compose_name": "={{ $json.compose_name }}",
+            "service_name": "={{ $json.service_name }}",
+            "display_name": "={{ $json.display_name }}",
+            "image_name": "={{ $json.image_name }}",
+            "criticality": "={{ $json.criticality }}",
+            "github_repo_url": "={{ $json.github_repo_url }}",
+            "rss_url": "={{ $json.rss_url }}",
+            "current_version": "={{ $json.current_version }}",
+            "stack_name": "={{ $json.stack_name }}"
+          },
+          "matchingColumns": [
+            "compose_name"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "compose_name",
+              "displayName": "compose_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "service_name",
+              "displayName": "service_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "display_name",
+              "displayName": "display_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "image_name",
+              "displayName": "image_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "is_tracked",
+              "displayName": "is_tracked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "criticality",
+              "displayName": "criticality",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "github_repo_url",
+              "displayName": "github_repo_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "rss_url",
+              "displayName": "rss_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "current_version",
+              "displayName": "current_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "stack_name",
+              "displayName": "stack_name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "latest_version",
+              "displayName": "latest_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -320,
+        -640
+      ],
+      "id": "788f035d-68d7-4ece-b5e1-258866f26f3e",
+      "name": "Upsert",
+      "credentials": {
+        "postgres": {
+          "id": "jtpiFvhox8JYNHhi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3dfbfdd0-5655-42b0-9d9b-727348e4ea98",
+              "leftValue": "={{ $json.is_tracked }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -128,
+        -640
+      ],
+      "id": "fe7d52ec-8db3-4aa4-9fed-bce6e5e39ec9",
+      "name": "Filter: is_tracked"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=/opt/homelab-infra/scripts/venv/bin/python3 /opt/homelab-infra/scripts/update_checker.py << 'EOF'\n{{ JSON.stringify($input.all().map(i => i.json)) }}\nEOF"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -640
+      ],
+      "id": "c132cbcd-0277-4375-9eee-b7e8ba50a135",
+      "name": "Execute a command",
+      "executeOnce": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.error_detail }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "9a415e88-1d25-4325-ba88-17174d61e1f0"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Errori negli URL dei Feed RSS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1dd91221-fb38-40b2-92f9-3840cf681717",
+                    "leftValue": "={{ $json.has_update }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Da Aggiornare"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4b57a881-356a-448a-bfcd-d2610fcc7ea1",
+                    "leftValue": "={{ $json.has_update }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Nessuna Novità"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -944,
+        32
+      ],
+      "id": "77c67393-4d85-477c-ae79-51579bd2f51b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        240
+      ],
+      "id": "e8788ef3-2526-44ab-b455-413fe71161a2",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -672,
+        -128
+      ],
+      "id": "6574d0fe-a279-4f28-b2e1-b5f71fcd5028",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE service_versions \nSET latest_version = $1, \n    status = 'pending_update', \n    updated_at = NOW() \nWHERE compose_name = $2;",
+        "options": {
+          "queryReplacement": "={{ $json.latest_version }}{{ $json.compose_name }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -672,
+        48
+      ],
+      "id": "1c6246b0-6b6e-4db8-bb34-8dfcc023a098",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "jtpiFvhox8JYNHhi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -480,
+        48
+      ],
+      "id": "e031edbe-c12a-4569-8c22-97c353a77efd",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prende l'output stringa dell'SSH e lo rimappa nel formato nativo degli oggetti n8n\nreturn JSON.parse($input.first().json.stdout).map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        -640
+      ],
+      "id": "6676f524-b48b-4c1d-af7d-e9e5140dcb4f",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "SSH: make versions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: make versions": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert": {
+      "main": [
+        [
+          {
+            "node": "Filter: is_tracked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: is_tracked": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7f6a940f-c7ae-4d3e-800f-f690c703fb04",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "96b2f0ec76a4400bbd481c617b24b3b87024cc7a913efacccaf9fc85722e7417"
+  },
+  "id": "PbeC5ME4kmuRPWEI",
+  "tags": []
+}
