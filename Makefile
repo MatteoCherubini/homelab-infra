@@ -74,3 +74,6 @@ gpu-check: ## Verifica presenza GPU NVIDIA (usato dai workflow di deploy)
 
 health: ## Mostra solo i container non in stato healthy
 	@docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v "healthy\|running" || echo "✅ Tutti i container sono healthy"
+
+manifest-json: ## Genera il manifest JSON Single Source of Truth (SSoT) dei servizi
+	@python3 ./scripts/generate_manifest.py
