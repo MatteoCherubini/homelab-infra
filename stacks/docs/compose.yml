@@ -3,7 +3,7 @@
 services:
 
   paperless-db:
-    image: postgres:${NEXTCLOUD_DB_VERSION}
+    image: ${NEXTCLOUD_DB_IMAGE}:${NEXTCLOUD_DB_VERSION}
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/paperless/db:/var/lib/postgresql/data
@@ -20,7 +20,7 @@ services:
       retries: 5
 
   paperless-redis:
-    image: redis:${NEXTCLOUD_REDIS_VERSION}
+    image: ${NEXTCLOUD_REDIS_IMAGE}:${NEXTCLOUD_REDIS_VERSION}
     restart: unless-stopped
     networks:
       - homelab
@@ -31,7 +31,7 @@ services:
       retries: 5
 
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:${PAPERLESS_VERSION}
+    image: ${PAPERLESS_IMAGE}:${PAPERLESS_VERSION}
     restart: unless-stopped
     depends_on:
       paperless-db:
