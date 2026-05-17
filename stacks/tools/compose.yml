@@ -3,7 +3,7 @@
 services:
 
   ntfy:
-    image: binwiederhier/ntfy:${NTFY_VERSION}
+    image: ${NTFY_IMAGE}:${NTFY_VERSION}
     restart: unless-stopped
     ports:
       - "${NTFY_PORT:-8091}:80"
@@ -14,7 +14,7 @@ services:
       - homelab
 
   excalidraw:
-    image: excalidraw/excalidraw:${EXCALIDRAW_VERSION}
+    image: ${EXCALIDRAW_IMAGE}:${EXCALIDRAW_VERSION}
     restart: unless-stopped
     ports:
       - "${EXCALIDRAW_PORT:-8092}:80"

@@ -5,7 +5,7 @@
 
 services:
   n8n-db:
-    image: postgres:${N8N_DB_VERSION}
+    image: ${N8N_DB_IMAGE}:${N8N_DB_VERSION}
     restart: unless-stopped
     volumes:
       - ${DATA_ROOT}/n8n/db:/var/lib/postgresql/data
@@ -24,7 +24,7 @@ services:
       start_period: 60s
 
   n8n-redis:
-    image: redis:${N8N_REDIS_VERSION}
+    image: ${N8N_REDIS_IMAGE}:${N8N_REDIS_VERSION}
     restart: unless-stopped
     command: redis-server --save 60 1 --appendonly yes
     volumes:
@@ -38,7 +38,7 @@ services:
       retries: 5
 
   n8n:
-    image: n8nio/n8n:${N8N_VERSION}
+    image: ${N8N_IMAGE}:${N8N_VERSION}
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
@@ -82,7 +82,7 @@ services:
       - homelab
 
   n8n-worker:
-    image: n8nio/n8n:${N8N_VERSION}
+    image: ${N8N_IMAGE}:${N8N_VERSION}
     restart: unless-stopped
     command: worker
     user: "${PUID:-1000}:${PGID:-1000}"

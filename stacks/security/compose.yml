@@ -3,7 +3,7 @@
 services:
 
   vaultwarden:
-    image: vaultwarden/server:${VAULTWARDEN_VERSION}
+    image: ${VAULTWARDEN_IMAGE}:${VAULTWARDEN_VERSION}
     restart: unless-stopped
     ports:
       - "${VAULTWARDEN_PORT:-8087}:80"
