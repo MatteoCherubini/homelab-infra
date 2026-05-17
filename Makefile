@@ -35,9 +35,6 @@ restart: ## Restart di tutti i servizi
 logs: ## Log live (tutti i servizi)
 	docker compose logs -f --tail=50
 
-versions: ## Lista versioni DICHIARATE nei file compose (tutti i profili)
-	@docker compose --profile "*" config --format json | jq -r '.services | to_entries[] | "\(.key)\t\(.value.image)"' | sort
-
 verify: ## Confronta le versioni su disco con quelle EFFETTIVAMENTE in esecuzione
 	@echo "🔍 Verifica allineamento Repo <-> Runtime..."
 	@echo "------------------------------------------------------------------------------------------------"
