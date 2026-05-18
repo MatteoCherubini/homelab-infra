@@ -1,25 +1,9 @@
-# ── AI: Ollama + Open WebUI ──
-# GPU: OLLAMA_GPU_ENABLED=true nel .env + docker compose --profile gpu up -d
+# ── AI: Ollama (GPU-only, dedicato alla GTX 1660 Super) ──
 
 services:
-
   ollama:
     image: ${OLLAMA_IMAGE}:${OLLAMA_VERSION}
     restart: unless-stopped
-    profiles:
-      - cpu
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ${DATA_ROOT}/ollama/data:/root/.ollama
-    networks:
-      - homelab
-
-  ollama-gpu:
-    image: ${OLLAMA_IMAGE}:${OLLAMA_VERSION}
-    restart: unless-stopped
-    profiles:
-      - gpu
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
@@ -35,16 +19,3 @@ services:
       homelab:
         aliases:
           - ollama
-
-  open-webui:
-    image: ${OPEN_WEBUI_IMAGE}:${OPEN_WEBUI_VERSION}
-    restart: unless-stopped
-    ports:
-      - "${OPENWEBUI_PORT:-8090}:8080"
-    volumes:
-      - ${DATA_ROOT}/open-webui/data:/app/backend/data
-    environment:
-      OLLAMA_BASE_URL: http://ollama:11434
-      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
-    networks:
-      - homelab
