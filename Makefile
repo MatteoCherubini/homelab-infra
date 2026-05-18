@@ -53,12 +53,14 @@ check: check-env ## Verifica prerequisiti e validità configurazioni
 check-env: ## Verifica che .env sia allineato a .env.example
 	@bash scripts/check-env.sh
 
-gpu-check: ## Verifica presenza GPU NVIDIA (usato dai workflow di deploy)
+gpu-check: ## Verifica presenza GPU NVIDIA
 	@nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
 		&& echo "GPU_OK" || echo "GPU_MISSING"
 
-health: ## Mostra solo i container non in stato healthy
-	@docker compose ps --format "table {{.Name}}\t{{.Status}}" | grep -v "healthy\|running" || echo "✅ Tutti i container sono healthy"
+health: ## Mostra solo i container non sani
+	@docker compose ps --format "table {{.Name}}\t{{.Status}}" \
+		| grep -iE "restarting|exited|dead|unhealthy|created|paused|starting" \
+		|| echo "✅ Tutti i container sono sani"
 
-check-updates: ## Genera il manifest JSON Single Source of Truth (SSoT) dei servizi
+check-updates: ## Genera il manifest JSON SSoT dei servizi
 	@python3 ./scripts/check_updates.py
