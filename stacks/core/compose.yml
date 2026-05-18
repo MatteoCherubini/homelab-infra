@@ -1,7 +1,6 @@
-# ── CORE: Nginx Proxy Manager, Headscale, Portainer, Homepage ──
+# ── CORE: Nginx Proxy Manager, Homepage, Cloudflared ──
 
 services:
-
   nginx:
     image: ${NGINX_IMAGE}:${NGINX_VERSION}
     restart: unless-stopped
@@ -12,37 +11,6 @@ services:
     volumes:
       - ${DATA_ROOT}/nginx/data:/data
       - ${DATA_ROOT}/nginx/letsencrypt:/etc/letsencrypt
-    networks:
-      - homelab
-
-  headscale:
-    image: ${HEADSCALE_IMAGE}:${HEADSCALE_VERSION}
-    restart: unless-stopped
-    command: serve
-    volumes:
-      - ${DATA_ROOT}/headscale/config:/etc/headscale
-      - ${DATA_ROOT}/headscale/data:/var/lib/headscale
-    ports:
-      - "${HEADSCALE_PORT:-8085}:8080"
-    networks:
-      - homelab
-
-  headscale-ui:
-    image: ${HEADSCALE_UI_IMAGE}:${HEADSCALE_UI_VERSION}
-    restart: unless-stopped
-    ports:
-      - "${HEADSCALE_UI_PORT:-8086}:80"
-    networks:
-      - homelab
-
-  portainer:
-    image: ${PORTAINER_IMAGE}:${PORTAINER_VERSION}
-    restart: unless-stopped
-    ports:
-      - "${PORTAINER_PORT:-9000}:9000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${DATA_ROOT}/portainer:/data
     networks:
       - homelab
 
@@ -60,6 +28,7 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: "${HOMEPAGE_ALLOWED_HOSTS:-*}"
     networks:
       - homelab
+
   cloudflared:
     image: ${CLOUDFLARED_IMAGE}:${CLOUDFLARED_VERSION}
     container_name: cloudflared
