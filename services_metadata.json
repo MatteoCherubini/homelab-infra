@@ -28,6 +28,11 @@
     "criticality": "medium",
     "stack": "automation"
   },
+  "n8n-worker": {
+    "repo": null,
+    "criticality": "dependency",
+    "stack": "automation"
+  },
   "nginx": {
     "repo": "NginxProxyManager/nginx-proxy-manager",
     "criticality": "critical",
