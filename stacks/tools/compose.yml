@@ -1,18 +1,6 @@
-# ── TOOLS: ntfy, Excalidraw ──
+# ── TOOLS: Excalidraw ──
 
 services:
-
-  ntfy:
-    image: ${NTFY_IMAGE}:${NTFY_VERSION}
-    restart: unless-stopped
-    ports:
-      - "${NTFY_PORT:-8091}:80"
-    volumes:
-      - ${DATA_ROOT}/ntfy/data:/var/lib/ntfy
-    command: serve
-    networks:
-      - homelab
-
   excalidraw:
     image: ${EXCALIDRAW_IMAGE}:${EXCALIDRAW_VERSION}
     restart: unless-stopped

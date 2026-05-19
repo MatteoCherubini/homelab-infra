@@ -74,12 +74,11 @@ def load_metadata() -> dict:
 
 def run_compose_config() -> dict:
     """
-    Esegue 'docker compose config --format json' con tutti i profili attivi.
+    Esegue 'docker compose config --format json'.
     Ritorna il dizionario dei servizi.
     """
     result = subprocess.run(
-        ["docker", "compose", "--profile", "cpu", "--profile", "gpu",
-         "config", "--format", "json"],
+        ["docker", "compose", "config", "--format", "json"],
         cwd=BASE_DIR,
         capture_output=True,
         text=True,
