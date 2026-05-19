@@ -18,98 +18,25 @@
     "github_repo_name": "forgejo",
     "github_repo_url": "https://codeberg.org/forgejo/forgejo"
   },
-  "garage": {
-    "repo": null,
-    "criticality": "medium",
-    "stack": "storage",
-    "rss_url": "https://git.deuxfleurs.fr/Deuxfleurs/garage/releases.atom",
-    "github_owner": "Deuxfleurs",
-    "github_repo_name": "garage",
-    "github_repo_url": "https://git.deuxfleurs.fr/Deuxfleurs/garage"
-  },
-  "grafana": {
-    "repo": "grafana/grafana",
-    "criticality": "low",
-    "stack": "monitoring"
-  },
-  "headscale": {
-    "repo": "juanfont/headscale",
-    "criticality": "medium",
-    "stack": "core"
-  },
-  "headscale-ui": {
-    "repo": "gurucomputing/headscale-ui",
-    "criticality": "medium",
-    "stack": "core"
-  },
   "homepage": {
     "repo": "gethomepage/homepage",
     "criticality": "low",
     "stack": "core"
-  },
-  "immich-server": {
-    "repo": "immich-app/immich",
-    "criticality": "critical",
-    "stack": "photos"
-  },
-  "kopia": {
-    "repo": "kopia/kopia",
-    "criticality": "critical",
-    "stack": "storage"
-  },
-  "loki": {
-    "repo": "grafana/loki",
-    "criticality": "low",
-    "stack": "monitoring"
   },
   "n8n": {
     "repo": "n8n-io/n8n",
     "criticality": "medium",
     "stack": "automation"
   },
-  "netdata": {
-    "repo": "netdata/netdata",
-    "criticality": "low",
-    "stack": "monitoring"
-  },
-  "nextcloud": {
-    "repo": "nextcloud/server",
-    "criticality": "critical",
-    "stack": "cloud"
+  "n8n-worker": {
+    "repo": null,
+    "criticality": "dependency",
+    "stack": "automation"
   },
   "nginx": {
     "repo": "NginxProxyManager/nginx-proxy-manager",
     "criticality": "critical",
     "stack": "core"
   },
-  "ntfy": {
-    "repo": "binwiederhier/ntfy",
-    "criticality": "low",
-    "stack": "tools"
-  },
-  "ollama-gpu": {
-    "repo": "ollama/ollama",
-    "criticality": "medium",
-    "stack": "ai"
-  },
-  "open-webui": {
-    "repo": "open-webui/open-webui",
-    "criticality": "medium",
-    "stack": "ai"
-  },
-  "paperless": {
-    "repo": "paperless-ngx/paperless-ngx",
-    "criticality": "critical",
-    "stack": "docs"
-  },
-  "portainer": {
-    "repo": "portainer/portainer",
-    "criticality": "medium",
-    "stack": "core"
-  },
-  "vaultwarden": {
-    "repo": "dani-garcia/vaultwarden",
-    "criticality": "critical",
-    "stack": "security"
-  }
+  "ollama": { "repo": "ollama/ollama", "criticality": "medium", "stack": "ai" }
 }
