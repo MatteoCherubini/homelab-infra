@@ -225,6 +225,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                     "rss_url":          f"https://github.com/{meta['repo']}/releases.atom",
                     "criticality":      criticality,
                     "stack_name":       stack_name,
+                    "display_name":     display_name,
                     "is_tracked":       True,
                 })
             else:
@@ -238,6 +239,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                     "rss_url":          meta.get("rss_url"),
                     "criticality":      criticality,
                     "stack_name":       stack_name,
+                    "display_name":     display_name,
                     "is_tracked":       has_rss,
                 })
 
@@ -250,6 +252,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                 "rss_url":          None,
                 "criticality":      "dependency",
                 "stack_name":       "dependency",
+                "display_name":     display_name,
                 "is_tracked":       False,
             })
 
@@ -269,6 +272,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                 "rss_url":          None,
                 "criticality":      "low",
                 "stack_name":       "untracked",
+                "display_name":     display_name,
                 "is_tracked":       False,
             })
 
