@@ -427,6 +427,7 @@ def main():
                 "errors":         len(errors),
                 "unchanged":      len(unchanged),
                 "untracked":      len(untracked_warnings),
+                "has_fatal":      False,
             }
         }
 
@@ -439,7 +440,7 @@ def main():
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,
-            "summary":            {}
+            "summary":            {"has_fatal": True}
         }))
 
     except json.JSONDecodeError as e:
@@ -448,7 +449,7 @@ def main():
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,
-            "summary":            {}
+            "summary":            {"has_fatal": True}
         }))
 
     except Exception as e:
@@ -457,7 +458,7 @@ def main():
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,
-            "summary":            {}
+            "summary":            {"has_fatal": True}
         }))
 
 
