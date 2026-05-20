@@ -227,7 +227,9 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                     "is_tracked":       True,
                 })
             else:
-                # Servizio non-GitHub (Forgejo su Codeberg, Garage su Gitea, ecc.)
+                # Non-GitHub con RSS diretto (Forgejo, Gitea, ecc.)
+                # Se manca anche rss_url, è censito ma non tracciabile
+                has_rss = bool(meta.get("rss_url"))
                 item.update({
                     "github_owner":     meta.get("github_owner"),
                     "github_repo_name": meta.get("github_repo_name"),
@@ -235,7 +237,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                     "rss_url":          meta.get("rss_url"),
                     "criticality":      criticality,
                     "stack_name":       stack_name,
-                    "is_tracked":       True,
+                    "is_tracked":       has_rss,
                 })
 
         elif s_name in discovered_deps:
