@@ -14,32 +14,38 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
-      "position": [
-        -912,
-        -640
-      ],
+      "position": [-912, -640],
       "id": "05f96367-a12f-4cb2-bd94-cb485794e5c2",
-      "name": "Cron"
+      "name": "CronSchedule: ogni 6h"
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "cd /opt/homelab-infra && make manifest-json"
+        "command": "cd /opt/homelab-infra && make check-updates"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
-      "position": [
-        -720,
-        -640
-      ],
+      "position": [-704, -640],
       "id": "6185a66d-1c01-4d59-a4a1-d8376f5282b5",
-      "name": "SSH: make versions",
+      "name": "SSH: check-updates",
+      "executeOnce": true,
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "SSH Password account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prende l'output stringa dell'SSH e lo rimappa nel formato nativo degli oggetti n8n\nreturn JSON.parse($input.first().json.stdout).manifest.map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-304, -640],
+      "id": "6676f524-b48b-4c1d-af7d-e9e5140dcb4f",
+      "name": "Parse manifest → split items",
+      "executeOnce": true
     },
     {
       "parameters": {
@@ -69,9 +75,7 @@
             "current_version": "={{ $json.current_version }}",
             "stack_name": "={{ $json.stack_name }}"
           },
-          "matchingColumns": [
-            "compose_name"
-          ],
+          "matchingColumns": ["compose_name"],
           "schema": [
             {
               "id": "id",
@@ -213,12 +217,9 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [
-        -320,
-        -640
-      ],
+      "position": [-80, -640],
       "id": "788f035d-68d7-4ece-b5e1-258866f26f3e",
-      "name": "Upsert",
+      "name": "Postgres: upsert services",
       "credentials": {
         "postgres": {
           "id": "jtpiFvhox8JYNHhi",
@@ -228,323 +229,129 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "3dfbfdd0-5655-42b0-9d9b-727348e4ea98",
-              "leftValue": "={{ $json.is_tracked }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "jsCode": "const raw = $input.first().json.stdout;\nlet data;\n\ntry {\n  data = JSON.parse(raw);\n} catch (e) {\n  data = {\n    fatal: `Impossibile parsare output SSH: ${e.message}`,\n    manifest: [], updates: [], errors: [],\n    unchanged: [], untracked_warnings: [],\n    run_at: new Date().toISOString(),\n    summary: { has_fatal: true }\n  };\n}\n\n// Normalizza: aggiunge has_fatal se lo script l'ha emesso alla radice\nif (data.fatal && !data.summary?.has_fatal) {\n  data.summary = { ...data.summary, has_fatal: true };\n}\n\nreturn [{ json: data }];"
       },
-      "type": "n8n-nodes-base.filter",
-      "typeVersion": 2.3,
-      "position": [
-        -128,
-        -640
-      ],
-      "id": "fe7d52ec-8db3-4aa4-9fed-bce6e5e39ec9",
-      "name": "Filter: is_tracked"
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-416, -432],
+      "id": "acc7c295-7abb-46ab-8d0c-f30e8b7d276d",
+      "name": "Parse full output"
     },
     {
       "parameters": {
-        "authentication": "privateKey",
-        "command": "=/opt/homelab-infra/scripts/venv/bin/python3 /opt/homelab-infra/scripts/update_checker.py << 'EOF'\n{{ JSON.stringify($input.all().map(i => i.json)) }}\nEOF"
+        "jsCode": "const data = $input.first().json;\nconst notifications = [];\nconst runTime = data.run_at?.slice(0, 16).replace('T', ' ') + ' UTC' || 'N/A';\n\n// ── 1. FATAL: qualcosa di grave ha impedito il check ─────────────────────────\nif (data.summary?.has_fatal || data.fatal) {\n  notifications.push({\n    title: 'Homelab - Update Checker Failed',   // ← no emoji, no em dash\n    priority: 'urgent',\n    tags: 'rotating_light',\n    body: `🚨 Il check degli aggiornamenti ha fallito completamente.\\n\\n❌ ${data.fatal || 'Errore sconosciuto'}\\n\\n⏱ ${runTime}`\n  });\n  // Se è fatal non ha senso controllare il resto\n  return notifications.map(n => ({ json: n }));\n}\n\n// ── 2. ERRORI RSS ─────────────────────────────────────────────────────────────\nif (data.errors?.length > 0) {\n  const hasCritical = data.errors.some(e => e.criticality === 'critical');\n  const lines = data.errors.map(e =>\n    `• ${e.display_name}  [${e.criticality} · ${e.stack_name}]\\n  ↳ ${e.error_detail}`\n  ).join('\\n\\n');\n\n  notifications.push({\n    title: `Homelab Updates - ${data.errors.length} errore/i RSS`,\n    priority: hasCritical ? 'high' : 'default',\n    tags: 'warning',\n    body: `⚠️ Errori nel controllo aggiornamenti (${runTime}):\\n\\n${lines}`\n  });\n}\n\n// ── 3. AGGIORNAMENTI DISPONIBILI ──────────────────────────────────────────────\nif (data.updates?.length > 0) {\n  const hasMajorOrCritical = data.updates.some(\n    u => u.is_major_bump || u.criticality === 'critical'\n  );\n\n  const lines = data.updates\n    .sort((a, b) => {\n      // Ordinamento: critical prima, poi per bump_type\n      const critOrder = { critical: 0, medium: 1, low: 2, stateless: 3 };\n      const bumpOrder = { major: 0, minor: 1, patch: 2, unknown: 3 };\n      return (critOrder[a.criticality] ?? 9) - (critOrder[b.criticality] ?? 9)\n          || (bumpOrder[a.bump_type] ?? 9) - (bumpOrder[b.bump_type] ?? 9);\n    })\n    .map(u => {\n      const bumpIcon = u.bump_type === 'major' ? '🔴 MAJOR'\n                     : u.bump_type === 'minor' ? '🟡 minor'\n                     : '🟢 patch';\n      const critFlag = u.criticality === 'critical' ? ' ⚡' : '';\n      return `${bumpIcon}  ${u.display_name}${critFlag}\\n  ${u.current_version} → ${u.latest_version}`;\n    })\n    .join('\\n\\n');\n\n  notifications.push({\n    title: `Homelab Updates - ${data.updates.length} aggiornamento/i disponibile/i`,\n    priority: hasMajorOrCritical ? 'high' : 'default',\n    tags: hasMajorOrCritical ? 'arrow_up,exclamation' : 'arrow_up',\n    body: `🔄 Aggiornamenti disponibili (${runTime}):\\n\\n${lines}`\n  });\n}\n\n// ── 4. SERVIZI NON CENSITI ────────────────────────────────────────────────────\nif (data.untracked_warnings?.length > 0) {\n  notifications.push({\n    title: `Homelab - ${data.untracked_warnings.length} servizio/i non censiti`,\n    priority: 'low',\n    tags: 'memo',\n    body: `📋 Servizi Docker non in services_metadata.json:\\n\\n${data.untracked_warnings.map(s => `• ${s}`).join('\\n')}\\n\\nAggiungili al file per abilitare il tracking.`\n  });\n}\n\n// Se non c'è nulla → array vuoto, il nodo HTTP non esegue\nreturn notifications.map(n => ({ json: n }));"
       },
-      "type": "n8n-nodes-base.ssh",
-      "typeVersion": 1,
-      "position": [
-        64,
-        -640
-      ],
-      "id": "c132cbcd-0277-4375-9eee-b7e8ba50a135",
-      "name": "Execute a command",
-      "executeOnce": true,
-      "credentials": {
-        "sshPrivateKey": {
-          "id": "GJQjKzte7Hjdfz89",
-          "name": "SSH Password account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.error_detail }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "string",
-                      "operation": "notEmpty",
-                      "singleValue": true
-                    },
-                    "id": "9a415e88-1d25-4325-ba88-17174d61e1f0"
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Errori negli URL dei Feed RSS"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "1dd91221-fb38-40b2-92f9-3840cf681717",
-                    "leftValue": "={{ $json.has_update }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "true",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Da Aggiornare"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "4b57a881-356a-448a-bfcd-d2610fcc7ea1",
-                    "leftValue": "={{ $json.has_update }}",
-                    "rightValue": "",
-                    "operator": {
-                      "type": "boolean",
-                      "operation": "false",
-                      "singleValue": true
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Nessuna Novità"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [
-        -944,
-        32
-      ],
-      "id": "77c67393-4d85-477c-ae79-51579bd2f51b",
-      "name": "Switch"
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        -672,
-        240
-      ],
-      "id": "e8788ef3-2526-44ab-b455-413fe71161a2",
-      "name": "No Operation, do nothing"
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        -672,
-        -128
-      ],
-      "id": "6574d0fe-a279-4f28-b2e1-b5f71fcd5028",
-      "name": "HTTP Request1"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE service_versions \nSET latest_version = $1, \n    status = 'pending_update', \n    updated_at = NOW() \nWHERE compose_name = $2;",
-        "options": {
-          "queryReplacement": "={{ $json.latest_version }}{{ $json.compose_name }}"
-        }
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        -672,
-        48
-      ],
-      "id": "1c6246b0-6b6e-4db8-bb34-8dfcc023a098",
-      "name": "Execute a SQL query1",
-      "credentials": {
-        "postgres": {
-          "id": "jtpiFvhox8JYNHhi",
-          "name": "Postgres account"
-        }
-      }
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-192, -432],
+      "id": "872b8f15-d572-434c-b5d7-e657c7d860d3",
+      "name": "Build notifications"
     },
     {
       "parameters": {
         "method": "POST",
+        "url": "http://ntfy/homelab-jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "Priority",
+              "value": "={{ $json.priority }}"
+            },
+            {
+              "name": "Tags",
+              "value": "={{ $json.tags }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "Raw / Text",
+        "body": "={{ $json.body }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [
-        -480,
-        48
-      ],
-      "id": "e031edbe-c12a-4569-8c22-97c353a77efd",
-      "name": "HTTP Request2"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Prende l'output stringa dell'SSH e lo rimappa nel formato nativo degli oggetti n8n\nreturn JSON.parse($input.first().json.stdout).map(item => ({ json: item }));"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -512,
-        -640
-      ],
-      "id": "6676f524-b48b-4c1d-af7d-e9e5140dcb4f",
-      "name": "Code in JavaScript"
+      "position": [32, -432],
+      "id": "91073eb5-7f68-4ba7-a8ed-050289304c7e",
+      "name": "ntfy: send notification",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBPXSWOF63k9mvm8",
+          "name": "ntfy-token"
+        },
+        "httpBearerAuth": {
+          "id": "nCv4CUN7Ef086Ewj",
+          "name": "Bearer Auth account"
+        }
+      }
     }
   ],
   "pinData": {},
   "connections": {
-    "Cron": {
+    "CronSchedule: ogni 6h": {
       "main": [
         [
           {
-            "node": "SSH: make versions",
+            "node": "SSH: check-updates",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "SSH: make versions": {
+    "SSH: check-updates": {
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Parse manifest → split items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Parse full output",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upsert": {
+    "Parse manifest → split items": {
       "main": [
         [
           {
-            "node": "Filter: is_tracked",
+            "node": "Postgres: upsert services",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter: is_tracked": {
+    "Postgres: upsert services": {
+      "main": [[]]
+    },
+    "Parse full output": {
       "main": [
         [
           {
-            "node": "Execute a command",
+            "node": "Build notifications",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Execute a command": {
+    "Build notifications": {
       "main": [
         [
           {
-            "node": "Switch",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Switch": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Execute a SQL query1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "No Operation, do nothing",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute a SQL query1": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code in JavaScript": {
-      "main": [
-        [
-          {
-            "node": "Upsert",
+            "node": "ntfy: send notification",
             "type": "main",
             "index": 0
           }
@@ -557,7 +364,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "7f6a940f-c7ae-4d3e-800f-f690c703fb04",
+  "versionId": "df767159-435b-4972-8fbc-17851e4a0e58",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "96b2f0ec76a4400bbd481c617b24b3b87024cc7a913efacccaf9fc85722e7417"
