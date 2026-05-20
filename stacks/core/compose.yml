@@ -47,3 +47,18 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - homelab
+
+  # ─── Notifiche push ──────────────────────────────────────────────────────────
+  ntfy:
+    container_name: ntfy
+    image: ${NTFY_IMAGE}:${NTFY_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${NTFY_PORT:-8091}:80"
+    volumes:
+      - ${DATA_ROOT}/ntfy/data:/var/lib/ntfy
+    command: serve
+    environment:
+      NTFY_BEHIND_PROXY: "true"
+    networks:
+      - homelab

@@ -38,5 +38,14 @@
     "criticality": "critical",
     "stack": "core"
   },
-  "ollama": { "repo": "ollama/ollama", "criticality": "medium", "stack": "ai" }
+  "ollama": {
+    "repo": "ollama/ollama",
+    "criticality": "medium",
+    "stack": "ai"
+  },
+  "ntfy": {
+    "repo": "binwiederhier/ntfy",
+    "criticality": "medium",
+    "stack": "core"
+  }
 }
