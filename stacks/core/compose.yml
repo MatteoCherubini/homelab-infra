@@ -60,5 +60,7 @@ services:
     command: serve
     environment:
       NTFY_BEHIND_PROXY: "true"
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
     networks:
       - homelab
