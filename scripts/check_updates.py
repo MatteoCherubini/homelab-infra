@@ -204,7 +204,6 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
             "raw_version":     raw_version,
             "current_version": clean_version,
             "full_image":      full_image,
-            "display_name": meta.get("display_name") or s_name.replace("-", " ").title(),
         }
 
         meta = metadata_map.get(s_name)
@@ -213,6 +212,8 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
             # ── Servizio censito in services_metadata.json ──────────────────
             stack_name  = meta.get("stack", "unknown")
             criticality = meta.get("criticality", "low")
+
+            display_name = meta.get("display_name") or s_name.replace("-", " ").title(),
 
             if meta.get("repo"):
                 # Servizio GitHub standard
