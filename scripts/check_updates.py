@@ -204,6 +204,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
             "raw_version":     raw_version,
             "current_version": clean_version,
             "full_image":      full_image,
+            "display_name": meta.get("display_name") or s_name.replace("-", " ").title(),
         }
 
         meta = metadata_map.get(s_name)
