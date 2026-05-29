@@ -52,6 +52,7 @@ services:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
       - n8n_known_hosts:/home/node/.ssh
     environment:
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
@@ -95,6 +96,7 @@ services:
     volumes:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
     environment:
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
