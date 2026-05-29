@@ -15,5 +15,6 @@ services:
       FORGEJO__server__DOMAIN: "git.keruhomelab.com"
       FORGEJO__server__SSH_DOMAIN: "git.keruhomelab.com"
       FORGEJO__server__SSH_PORT: "22"
+      FORGEJO__webhook__ALLOWED_HOST_LIST: "n8n,172.20.0.0/16,10.0.0.0/8"
     networks:
       - homelab
