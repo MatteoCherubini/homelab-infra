@@ -14,7 +14,10 @@
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
-      "position": [-912, -640],
+      "position": [
+        -912,
+        -640
+      ],
       "id": "05f96367-a12f-4cb2-bd94-cb485794e5c2",
       "name": "CronSchedule: ogni 6h"
     },
@@ -25,14 +28,17 @@
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
-      "position": [-704, -640],
+      "position": [
+        -704,
+        -640
+      ],
       "id": "6185a66d-1c01-4d59-a4a1-d8376f5282b5",
       "name": "SSH: check-updates",
       "executeOnce": true,
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
-          "name": "SSH Password account"
+          "name": "n8n container -> n8n-runner@nexus"
         }
       }
     },
@@ -42,7 +48,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-304, -640],
+      "position": [
+        -304,
+        -640
+      ],
       "id": "6676f524-b48b-4c1d-af7d-e9e5140dcb4f",
       "name": "Parse manifest → split items",
       "executeOnce": true
@@ -75,7 +84,9 @@
             "current_version": "={{ $json.current_version }}",
             "stack_name": "={{ $json.stack_name }}"
           },
-          "matchingColumns": ["compose_name"],
+          "matchingColumns": [
+            "compose_name"
+          ],
           "schema": [
             {
               "id": "id",
@@ -217,7 +228,10 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [-80, -640],
+      "position": [
+        -80,
+        -640
+      ],
       "id": "788f035d-68d7-4ece-b5e1-258866f26f3e",
       "name": "Postgres: upsert services",
       "credentials": {
@@ -233,7 +247,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-416, -432],
+      "position": [
+        -416,
+        -432
+      ],
       "id": "acc7c295-7abb-46ab-8d0c-f30e8b7d276d",
       "name": "Parse full output"
     },
@@ -243,7 +260,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-192, -432],
+      "position": [
+        -192,
+        -432
+      ],
       "id": "872b8f15-d572-434c-b5d7-e657c7d860d3",
       "name": "Build notifications"
     },
@@ -278,7 +298,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [32, -432],
+      "position": [
+        32,
+        -432
+      ],
       "id": "91073eb5-7f68-4ba7-a8ed-050289304c7e",
       "name": "ntfy: send notification",
       "credentials": {
@@ -334,7 +357,9 @@
       ]
     },
     "Postgres: upsert services": {
-      "main": [[]]
+      "main": [
+        []
+      ]
     },
     "Parse full output": {
       "main": [
