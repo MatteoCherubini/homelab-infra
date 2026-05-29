@@ -66,6 +66,7 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       # ── Encryption ────────────────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      TORRE_MAC: ${TORRE_MAC}
       # ── Sicurezza SSRF ────────────────────────────────────────────────────
       N8N_SSRF_PROTECTION_ENABLED: ${N8N_SSRF_PROTECTION_ENABLED}
       N8N_SSRF_BLOCKED_IP_RANGES: ${N8N_SSRF_BLOCKED_IP_RANGES}
@@ -108,5 +109,6 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       GENERIC_TIMEZONE: ${TZ}
+      TORRE_MAC: ${TORRE_MAC}
     networks:
       - homelab
