@@ -4,6 +4,7 @@ media/
 
 # Secrets
 .env
+.env.backup-*
 
 # OS
 .DS_Store
