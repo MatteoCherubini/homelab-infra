@@ -14,6 +14,7 @@ include:
   - stacks/automation/compose.yml
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
+  - stacks/security/compose.yml
   # - stacks/ups/compose.yml    # Abilitare dopo setup fisico UPS
 
 networks:
