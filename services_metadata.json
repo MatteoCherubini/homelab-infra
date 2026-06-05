@@ -47,5 +47,14 @@
     "repo": "binwiederhier/ntfy",
     "criticality": "medium",
     "stack": "core"
+  },
+  "vaultwarden": {
+    "repo": "dani-garcia/vaultwarden",
+    "criticality": "critical",
+    "stack": "security",
+    "rss_url": "https://github.com/dani-garcia/vaultwarden/releases.atom",
+    "github_owner": "dani-garcia",
+    "github_repo_name": "vaultwarden",
+    "github_repo_url": "https://github.com/dani-garcia/vaultwarden"
   }
 }
