@@ -25,6 +25,15 @@ services:
       ADMIN_RATELIMIT_MAX_BURST: "3"
       ADMIN_RATELIMIT_SECONDS: "300"
 
+      # SMTP config (Gmail)
+      SMTP_HOST: "${VAULTWARDEN_SMTP_HOST}"
+      SMTP_PORT: "${VAULTWARDEN_SMTP_PORT:-587}"
+      SMTP_SECURITY: "${VAULTWARDEN_SMTP_SECURITY:-starttls}"
+      SMTP_USERNAME: "${VAULTWARDEN_SMTP_USER}"
+      SMTP_PASSWORD: "${VAULTWARDEN_SMTP_PASS}"
+      SMTP_FROM: "${VAULTWARDEN_SMTP_FROM}"
+      SMTP_FROM_NAME: "Homelab Vaultwarden"
+
       # General settings
       TZ: "${TZ}"
       WEBSOCKET_ENABLED: "true"
