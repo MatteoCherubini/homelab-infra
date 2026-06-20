@@ -48,6 +48,15 @@
     "criticality": "medium",
     "stack": "core"
   },
+  "syncthing": {
+    "repo": "syncthing/syncthing",
+    "criticality": "medium",
+    "stack": "automation",
+    "rss_url": "https://github.com/syncthing/syncthing/releases.atom",
+    "github_owner": "syncthing",
+    "github_repo_name": "syncthing",
+    "github_repo_url": "https://github.com/syncthing/syncthing"
+  },
   "vaultwarden": {
     "repo": "dani-garcia/vaultwarden",
     "criticality": "critical",
