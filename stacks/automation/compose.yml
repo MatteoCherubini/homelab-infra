@@ -1,4 +1,4 @@
-# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 ──────────────────
+# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 + Syncthing ─────────
 #
 # Ref: https://docs.n8n.io/2-0-breaking-changes/
 # ──────────────────────────────────────────────────────────────────────────────
@@ -114,3 +114,59 @@ services:
       TORRE_MAC: ${TORRE_MAC}
     networks:
       - homelab
+
+  # ── SYNCTHING: raw ingress (Obsidian → nexus) — Knowledge Genome ──────
+  #
+  # Lives alongside n8n because they work as a pair: n8n queries the REST API of
+  # Syncthing to detect modified raws, map them to the collaborator, and
+  # commit them.
+  #
+  # Reachability n8n → Syncthing:
+  #   - STGUIADDRESS=0.0.0.0:8384 makes the API listen on the entire network of
+  #     the container, so n8n (same 'homelab' network) can call it via
+  #     http://syncthing:8384 with the X-API-Key header. NB: add 'syncthing'
+  #     to N8N_SSRF_ALLOWED_HOSTNAMES in the .env file, otherwise SSRF protection will block it.
+  #   - Port 8384 is published ONLY on the host's 127.0.0.1 (human admin);
+  #     it is not exposed on the LAN.
+  # Sync ports (22000 tcp/udp, 21027/udp discovery) are published on the LAN for peers
+  # (laptops, phones). LAN-only tuning (no global discovery/relay) is configured
+  # in the GUI or via config after the first startup.
+  # ──────────────────────────────────────────────────────────────────────────────
+  syncthing:
+    image: ${SYNCTHING_IMAGE}:${SYNCTHING_VERSION}
+    restart: unless-stopped
+    hostname: nexus-syncthing
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ}
+      # API/GUI on the entire container network (for n8n via Docker DNS)
+      STGUIADDRESS: 0.0.0.0:8384
+      # no default ~/Sync folder: folders are created via API (n8n control plane)
+      STNODEFAULTFOLDER: "true"
+    volumes:
+      - ${DATA_ROOT}/syncthing/config:/var/syncthing/config
+      # genome working tree (checkout + private staging area), IDENTICAL host↔container path
+      # so the SSH-based commit job on nexus and Syncthing see the same path
+      - ${GENOME_VAULTS_ROOT:-/srv/genome-vaults}:${GENOME_VAULTS_ROOT:-/srv/genome-vaults}
+    ports:
+      # GUI/API: host loopback only (admin). n8n uses the internal Docker network.
+      - "127.0.0.1:${SYNCTHING_GUI_PORT:-8384}:8384"
+      # data sync (LAN): TCP + QUIC (UDP)
+      - "${SYNCTHING_SYNC_PORT:-22000}:22000/tcp"
+      - "${SYNCTHING_SYNC_PORT:-22000}:22000/udp"
+      # local discovery (LAN)
+      - "${SYNCTHING_DISCOVERY_PORT:-21027}:21027/udp"
+    networks:
+      - homelab
+    healthcheck:
+      # unauthenticated endpoint; wget is included (busybox) in the Alpine image
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8384/rest/noauth/health || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
