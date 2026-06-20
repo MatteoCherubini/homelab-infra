@@ -163,13 +163,13 @@ services:
     networks:
       - homelab
     healthcheck:
-      # unauthenticated endpoint; wget is included (busybox) in the Alpine image
+      # official form (the image includes curl); unauthenticated endpoint
       test:
         [
           "CMD-SHELL",
-          "wget -qO- http://127.0.0.1:8384/rest/noauth/health || exit 1",
+          "curl -fkLsS -m 2 127.0.0.1:8384/rest/noauth/health | grep -o OK || exit 1",
         ]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 5
       start_period: 30s
