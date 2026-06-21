@@ -74,6 +74,7 @@ services:
       N8N_SSRF_ALLOWED_HOSTNAMES: ${N8N_SSRF_ALLOWED_HOSTNAMES}
       # ── Webhook HMAC ──────────────────────────────────────────────────────
       N8N_WEBHOOK_HMAC_SECRET: ${N8N_WEBHOOK_HMAC_SECRET}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL}
       # ── Performance / Storage ─────────────────────────────────────────────
       NODE_OPTIONS: --max-old-space-size=1024
       EXECUTIONS_DATA_PRUNE: "true"
