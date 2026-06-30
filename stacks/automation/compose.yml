@@ -147,7 +147,6 @@ services:
       STGUIADDRESS: 0.0.0.0:8384
       # no default ~/Sync folder: folders are created via API (n8n control plane)
       STNODEFAULTFOLDER: "true"
-      N8N_NODE_FUNCTION_ALLOW_BUILTIN: ${N8N_NODE_FUNCTION_ALLOW_BUILTIN:-crypto}
     volumes:
       # Entire Syncthing home directory (config + SQLite index DB): v2 does not write
       # only to the /config subpath, so the whole /var/syncthing is mounted as per
