@@ -66,6 +66,7 @@ services:
       N8N_RUNNERS_MODE: internal
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       # ── Encryption ────────────────────────────────────────────────────────
+      N8N_CODE_NODE_ALLOW_BUILTIN: ${N8N_CODE_NODE_ALLOW_BUILTIN:-crypto}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       TORRE_MAC: ${TORRE_MAC}
       # ── Sicurezza SSRF ────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ services:
       # ── Encryption ────────────────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+      N8N_CODE_NODE_ALLOW_BUILTIN: ${N8N_CODE_NODE_ALLOW_BUILTIN:-crypto}
       GENERIC_TIMEZONE: ${TZ}
       TORRE_MAC: ${TORRE_MAC}
     networks:
