@@ -68,6 +68,9 @@ services:
       # ── Encryption ────────────────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       TORRE_MAC: ${TORRE_MAC}
+      # ── Syncthing ─────────────────────────────────────────────────────────
+      SYNCTHING_URL: ${SYNCTHING_URL}
+      SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
       # ── Sicurezza SSRF ────────────────────────────────────────────────────
       N8N_SSRF_PROTECTION_ENABLED: ${N8N_SSRF_PROTECTION_ENABLED}
       N8N_SSRF_BLOCKED_IP_RANGES: ${N8N_SSRF_BLOCKED_IP_RANGES}
