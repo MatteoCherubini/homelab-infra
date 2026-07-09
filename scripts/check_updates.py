@@ -213,7 +213,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
             stack_name  = meta.get("stack", "unknown")
             criticality = meta.get("criticality", "low")
 
-            display_name = meta.get("display_name") or s_name.replace("-", " ").title(),
+            display_name = meta.get("display_name") or s_name.replace("-", " ").title()
 
             if meta.get("repo"):
                 # Servizio GitHub standard
