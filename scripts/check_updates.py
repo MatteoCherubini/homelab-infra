@@ -297,9 +297,11 @@ def is_stable_release(title: str) -> bool:
     return not any(kw in title.lower() for kw in UNSTABLE_KEYWORDS)
 
 
-def get_latest_from_rss(url: str) -> str:
+def get_latest_from_rss(url: str, current_version: str = "") -> str:
     """
     Scarica il feed Atom/RSS e ritorna il titolo della prima release stabile.
+    Se current_version è fornita, cerca una release con lo stesso major version
+    PRIMA di accettare qualsiasi release (multi-branch: es. n8n v1/v2).
     Lancia eccezione se non trova nulla o se la rete fallisce.
     """
     resp = requests.get(url, timeout=TIMEOUT, headers=HTTP_HEADERS)
@@ -309,12 +311,32 @@ def get_latest_from_rss(url: str) -> str:
     xml_clean = re.sub(r'\sxmlns="[^"]+"', "", resp.text, count=1)
     root = ET.fromstring(xml_clean)
 
+    current_semver = extract_semver(current_version)
+    current_major  = current_semver[0] if current_semver != (0, 0, 0) else None
+
+    same_branch = []
+    any_stable  = []
+
     for entry in root.findall(".//entry"):
         title_el = entry.find("title")
         if title_el is not None and title_el.text:
             title = title_el.text.strip()
-            if is_stable_release(title):
-                return title
+            if not is_stable_release(title):
+                continue
+
+            any_stable.append(title)
+
+            # Se conosciamo il major attuale, filtriamo per branch
+            if current_major is not None:
+                entry_semver = extract_semver(title)
+                if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
+                    same_branch.append(title)
+
+    # Priorità: stessa branch > qualsiasi release stabile
+    if same_branch:
+        return same_branch[0]
+    if any_stable:
+        return any_stable[0]
 
     raise ValueError("Nessuna release stabile trovata nel feed")
 
