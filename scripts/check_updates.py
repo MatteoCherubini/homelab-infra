@@ -121,6 +121,11 @@ def extract_semver(version_str: str) -> tuple:
     """
     Estrae (major, minor, patch) da una stringa di versione.
     Ritorna (0, 0, 0) se la stringa non contiene numeri validi.
+
+    Gestisce:
+      "10"        → (10, 0, 0)   # tag Docker a singolo numero
+      "v15.0.3"   → (15, 0, 3)
+      "2.15.0"    → (2, 15, 0)
     """
     if not version_str or version_str == "latest":
         return (0, 0, 0)
@@ -131,6 +136,10 @@ def extract_semver(version_str: str) -> tuple:
             int(m.group(2)),
             int(m.group(3)) if m.group(3) else 0
         )
+    # Fallback: versione a singolo numero (es. tag Docker "10", "8")
+    single = re.match(r"v?(\d+)$", version_str.strip())
+    if single:
+        return (int(single.group(1)), 0, 0)
     return (0, 0, 0)
 
 
