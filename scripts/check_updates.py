@@ -373,17 +373,27 @@ def check_updates(tracked_services: list) -> tuple:
         time.sleep(THROTTLE)
 
         try:
-            latest_raw = get_latest_from_rss(rss_url)
+            latest_raw = get_latest_from_rss(rss_url, current_version)
 
             curr_tuple              = extract_semver(current_version)
             lat_tuple               = extract_semver(latest_raw)
             bump_type, is_major     = determine_bump(curr_tuple, lat_tuple)
+
+            # Calcola distanza di versione per dare peso alla priorità
+            version_gap = 0
+            if curr_tuple != (0, 0, 0) and lat_tuple != (0, 0, 0):
+                version_gap = (
+                    abs(lat_tuple[0] - curr_tuple[0]) * 100
+                    + abs(lat_tuple[1] - curr_tuple[1]) * 10
+                    + abs(lat_tuple[2] - curr_tuple[2])
+                )
 
             result.update({
                 "latest_version": latest_raw,
                 "bump_type":      bump_type,
                 "is_major_bump":  is_major,
                 "has_update":     bump_type in ("major", "minor", "patch"),
+                "version_gap":    version_gap,
             })
 
             if result["has_update"]:
