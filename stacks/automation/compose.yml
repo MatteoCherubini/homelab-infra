@@ -84,8 +84,6 @@ services:
       EXECUTIONS_DATA_MAX_AGE: 168
       N8N_BINARY_DATA_STORAGE: filesystem
       GENERIC_TIMEZONE: ${TZ}
-      # ── Ollama ───────────────────────────────────────────────────────
-      N8N_SSRF_ALLOWED_HOSTNAMES: ollama
     networks:
       - homelab
 
