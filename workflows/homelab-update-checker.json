@@ -1,5 +1,5 @@
 {
-  "name": "WF-1",
+  "name": "Homelab Update Checker",
   "nodes": [
     {
       "parameters": {
@@ -9,10 +9,10 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        -704,
-        -640
+        10544,
+        176
       ],
-      "id": "6185a66d-1c01-4d59-a4a1-d8376f5282b5",
+      "id": "2856767b-15d1-48ba-83ba-2366108bfacf",
       "name": "SSH: check-updates",
       "executeOnce": true,
       "credentials": {
@@ -29,10 +29,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -304,
-        -640
+        10944,
+        176
       ],
-      "id": "6676f524-b48b-4c1d-af7d-e9e5140dcb4f",
+      "id": "6549d146-cea7-41c3-90f9-d4f7bf8a2fea",
       "name": "Parse manifest → split items",
       "executeOnce": true
     },
@@ -209,10 +209,10 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        -80,
-        -640
+        11168,
+        176
       ],
-      "id": "788f035d-68d7-4ece-b5e1-258866f26f3e",
+      "id": "8c9b1d1d-b661-4244-acef-bb3452acb11e",
       "name": "Postgres: upsert services",
       "credentials": {
         "postgres": {
@@ -228,11 +228,12 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -416,
-        -432
+        10832,
+        384
       ],
-      "id": "acc7c295-7abb-46ab-8d0c-f30e8b7d276d",
-      "name": "Parse full output"
+      "id": "5d12cb11-7f75-4518-8c0c-155c42bcd419",
+      "name": "Parse full output",
+      "executeOnce": true
     },
     {
       "parameters": {
@@ -241,10 +242,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -192,
-        -432
+        11056,
+        384
       ],
-      "id": "872b8f15-d572-434c-b5d7-e657c7d860d3",
+      "id": "38d6bb96-b98a-4f2e-92f1-d72eca042cfa",
       "name": "Build notifications"
     },
     {
@@ -279,11 +280,140 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        32,
-        -432
+        11280,
+        384
       ],
-      "id": "91073eb5-7f68-4ba7-a8ed-050289304c7e",
+      "id": "c941827b-02f1-464a-b1f7-1144a7901de5",
       "name": "ntfy: send notification",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBPXSWOF63k9mvm8",
+          "name": "ntfy-token"
+        },
+        "httpBearerAuth": {
+          "id": "nCv4CUN7Ef086Ewj",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.updates.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        10832,
+        576
+      ],
+      "id": "643b7343-08ba-414f-8c6e-6affc3bab51b",
+      "name": "IF: has updates?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Ollama prompt v5 — direct from parsed output, no Merge needed\nconst OLLAMA_MODEL = 'qwen2.5:7b';\n\nconst data = $input.first().json;\nconst updates = data.updates || [];\n\nconst services = updates.map(u => ({\n  name: u.display_name || u.compose_name,\n  current: u.current_version,\n  latest: u.latest_version,\n  bump: u.bump_type,\n  criticality: u.criticality,\n  gap: u.version_gap || 0,\n  stack: u.stack_name,\n}));\n\nconst systemPrompt = `You are an expert sysadmin specializing in Docker self-hosted homelab infrastructure.\nYou analyze container service updates and produce concise risk assessments.\n\nFor each service evaluate:\n- Risk: \"safe\" (patch, bugfix) | \"caution\" (minor with possible behavioral changes) | \"risky\" (major bump, known breaking changes, large version gaps)\n- Reason in 1-2 short sentences\n- Pre-update actions needed (backup, migration, config review) or \"none\"\n\nThen suggest an update order from safest to riskiest.\n\nRULES:\n- Do NOT think or reason out loud. Output ONLY valid JSON.\n- No backticks, no markdown, no text before or after the JSON.\n- Use this exact schema:\n{\n  \"assessments\": [\n    { \"service\": \"...\", \"risk\": \"safe|caution|risky\", \"reason\": \"...\", \"pre_actions\": \"none|...\" }\n  ],\n  \"update_order\": [\"service1\", \"service2\"],\n  \"summary\": \"1-2 sentence overall summary\"\n}`;\n\nconst userPrompt = services.map(s =>\n  `## ${s.name} [${s.criticality}] - stack: ${s.stack}\\n` +\n  `Version: ${s.current} -> ${s.latest}\\n` +\n  `Bump type: ${s.bump} | Gap: ${s.gap}`\n).join('\\n\\n---\\n\\n');\n\nconst ollamaBody = {\n  model: OLLAMA_MODEL,\n  format: 'json',\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userPrompt }\n  ],\n  stream: false,\n  options: { temperature: 0.1, num_predict: 2048 }\n};\n\nreturn [{ json: {\n  service_count: services.length,\n  service_names: services.map(s => s.name),\n  system_prompt: systemPrompt,\n  user_prompt: userPrompt,\n  ollama_body: JSON.stringify(ollamaBody)\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11088,
+        560
+      ],
+      "id": "2cf25689-251b-490d-996a-ee6c57810d32",
+      "name": "Build Ollama prompt",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/chat",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={{ $json.ollama_body }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        11296,
+        560
+      ],
+      "id": "a99cb488-0ca1-4129-9947-298cde0e35fe",
+      "name": "Ollama: risk assessment",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build AI notification v2\nconst raw = $input.first().json;\nconst content = raw?.message?.content || raw?.response || '';\n\nlet report;\ntry {\n  const noThink = content.replace(/<think>[\\s\\S]*?<\\/think>/g, '');\n  // Estrae il primo blocco JSON valido\n  const jsonMatch = noThink.match(/\\{[\\s\\S]*\\}/);\n  const cleaned = jsonMatch ? jsonMatch[0] : noThink;\n  report = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: {\n    title: 'Homelab AI - Update analysis',\n    priority: 'default',\n    tags: 'robot_face',\n    body: `Ollama response (unstructured):\\n\\n${content.substring(0, 1500) || 'No response from Ollama'}`,\n  }}];\n}\n\nconst riskEmoji = { safe: '🟢', caution: '🟡', risky: '🔴' };\nconst lines = (report.assessments || []).map(a => {\n  const icon = riskEmoji[a.risk] || a.risk || '⚪';\n  const preAct = a.pre_actions && a.pre_actions !== 'none' && a.pre_actions !== '-' ? `\\n  ⚠ ${a.pre_actions}` : '';\n  return `${icon}  ${a.service}\\n  ${a.reason}${preAct}`;\n}).join('\\n\\n');\n\nconst order = (report.update_order || []).join(' -> ');\nconst hasRed = (report.assessments || []).some(a => a.risk === 'risky');\nconst hasYellow = (report.assessments || []).some(a => a.risk === 'caution');\n\nconst body = [`AI update analysis:\\n`, lines, `\\nSuggested order:\\n${order}`, report.summary ? `\\n${report.summary}` : ''].filter(Boolean).join('\\n');\n\nreturn [{ json: {\n  title: 'Homelab AI - Risk Assessment',\n  priority: hasRed ? 'high' : hasYellow ? 'default' : 'low',\n  tags: hasRed ? 'robot_face,warning' : 'robot_face',\n  body\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11504,
+        560
+      ],
+      "id": "d9e315fc-b32e-4a32-993f-bf9293dfc65a",
+      "name": "Build AI notification"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ntfy/homelab-jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "Priority",
+              "value": "={{ $json.priority }}"
+            },
+            {
+              "name": "Tags",
+              "value": "={{ $json.tags }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "Raw / Text",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        11712,
+        560
+      ],
+      "id": "7b15245e-6cfc-45ab-86e2-95f696d69955",
+      "name": "ntfy: AI assessment",
       "credentials": {
         "httpHeaderAuth": {
           "id": "TBPXSWOF63k9mvm8",
@@ -309,11 +439,11 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
       "position": [
-        -912,
-        -640
+        10336,
+        176
       ],
-      "id": "05f96367-a12f-4cb2-bd94-cb485794e5c2",
-      "name": "CronSchedule: alle 22 ogni giorno feriale"
+      "id": "68a8ea5d-cb38-4131-b148-6d5ead095294",
+      "name": "CronSchedule: alle 22 di ogni giorno feriale"
     }
   ],
   "pinData": {},
@@ -345,16 +475,16 @@
         ]
       ]
     },
-    "Postgres: upsert services": {
-      "main": [
-        []
-      ]
-    },
     "Parse full output": {
       "main": [
         [
           {
             "node": "Build notifications",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF: has updates?",
             "type": "main",
             "index": 0
           }
@@ -372,7 +502,51 @@
         ]
       ]
     },
-    "CronSchedule: alle 22 ogni giorno feriale": {
+    "IF: has updates?": {
+      "main": [
+        [
+          {
+            "node": "Build Ollama prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Ollama prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: risk assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: risk assessment": {
+      "main": [
+        [
+          {
+            "node": "Build AI notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI notification": {
+      "main": [
+        [
+          {
+            "node": "ntfy: AI assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CronSchedule: alle 22 di ogni giorno feriale": {
       "main": [
         [
           {
@@ -389,7 +563,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "22e0eb93-766d-44ff-95a5-42eb873d4b54",
+  "versionId": "7677964f-dd36-4f21-8664-37104288b9a1",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "96b2f0ec76a4400bbd481c617b24b3b87024cc7a913efacccaf9fc85722e7417"
