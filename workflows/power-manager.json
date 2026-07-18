@@ -259,7 +259,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        912,
+        1392,
         -1056
       ],
       "id": "ad82c37a-b1ce-4158-a4a7-9eaa98582faf",
@@ -273,8 +273,8 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        752,
-        -880
+        992,
+        -960
       ],
       "id": "18d52fbe-8479-429e-b8b3-8a21ac30c738",
       "name": "A8 - Poll vm101 running",
@@ -294,8 +294,8 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        576,
-        -880
+        816,
+        -960
       ],
       "id": "28d92c37-23c3-4696-8531-edc3d2cb8537",
       "name": "A7 - vm101 start",
@@ -318,11 +318,11 @@
           "conditions": [
             {
               "id": "2bfe0e03-7557-467c-81e6-de93e11d9344",
-              "leftValue": "={{ $json.stdout }}",
+              "leftValue": "={{ ($json.stdout || '').trim() }}",
               "rightValue": "running",
               "operator": {
                 "type": "string",
-                "operation": "contains"
+                "operation": "equals"
               }
             }
           ],
@@ -342,7 +342,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh torre \"vm101 status\""
+        "command": "ssh torre \"torre-vm-arbiter status 101\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -557,6 +557,89 @@
       ],
       "id": "152dbb3b-d9f1-4a2a-9b1c-9919f90df96e",
       "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "77cb58a5-e0e2-4957-80ee-b94325a2bbb5",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "402a0176-2e1f-4401-859a-964b1f155fc3",
+              "name": "blocked_by",
+              "value": "={{ ($json.stdout || 'sconosciuto').trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        -768
+      ],
+      "id": "c02fe9f6-c964-4594-b873-eb0e5f23429d",
+      "name": "A6c - Output blocked"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "163f431f-8693-4032-8d9d-17f3b3d9bd82",
+              "leftValue": "={{ ($json.stdout || '').trim() }}",
+              "rightValue": "stopped",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        608,
+        -944
+      ],
+      "id": "0e56df1a-bd94-4a97-a755-6348a135ddb6",
+      "name": "A6b - motore libero?"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "for i in $(seq 1 30); do ssh -o ConnectTimeout=3 -o BatchMode=yes vm101 'echo ready' 2>/dev/null && exit 0; sleep 5; done; exit 1"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        -960
+      ],
+      "id": "2c68b16a-b688-41f5-b475-ca245f7522fc",
+      "name": "A8b - Poll vm101 SSH ready",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "n8n container -> n8n-runner@nexus"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {},
@@ -656,7 +739,7 @@
       "main": [
         [
           {
-            "node": "A9 - Output OK",
+            "node": "A8b - Poll vm101 SSH ready",
             "type": "main",
             "index": 0
           }
@@ -685,7 +768,7 @@
         ],
         [
           {
-            "node": "A7 - vm101 start",
+            "node": "A6b - motore libero?",
             "type": "main",
             "index": 0
           }
@@ -789,6 +872,35 @@
           }
         ]
       ]
+    },
+    "A6b - motore libero?": {
+      "main": [
+        [
+          {
+            "node": "A7 - vm101 start",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A6c - Output blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A8b - Poll vm101 SSH ready": {
+      "main": [
+        [
+          {
+            "node": "A9 - Output OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -799,7 +911,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "f17e4086-277a-4a84-8b9c-a416c3a11318",
+  "versionId": "9f9272b3-8ba5-4b14-89e6-a6e1209b2b37",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "96b2f0ec76a4400bbd481c617b24b3b87024cc7a913efacccaf9fc85722e7417"
