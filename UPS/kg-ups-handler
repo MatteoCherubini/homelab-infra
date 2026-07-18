@@ -13,30 +13,59 @@
 # Why not decide on battery.runtime: this model's runtimecal is calibrated at 4%/8% load, so
 # any runtime estimate under real load is fiction. Time-since-ONBATT is honest; runtime is not.
 #
+# Security: the ntfy token lives in /etc/nut/kg-ups.env (chmod 0600, owned by root).
+#   printf 'NTFY_TOKEN=tk_...\n' | sudo tee /etc/nut/kg-ups.env && sudo chmod 0600 /etc/nut/kg-ups.env
+#
 # Install ON NEXUS: install -m 0755 kg-ups-handler /usr/local/bin/kg-ups-handler
 # Called as:  kg-ups-handler <event>     (torre-down | nexus-down | notify-onbatt | notify-online)
 # Test (no shutdown):  KG_UPS_DRYRUN=1 kg-ups-handler torre-down
 # =============================================================================
 set -u
 
-TORRE_IP="${TORRE_IP:-10.0.10.10}"                  # IP, never a hostname: DNS may be down
+# ── Config (overridable via env) ─────────────────────────────────────────────
+TORRE_IP="${TORRE_IP:-10.0.10.10}"
 TORRE_SSH_USER="${TORRE_SSH_USER:-root}"
+COMPOSE_UNIT="${COMPOSE_UNIT:-homelab-compose.service}"
 COMPOSE_DIR="${COMPOSE_DIR:-/opt/homelab-infra}"
-COMPOSE_UNIT="${COMPOSE_UNIT:-homelab-compose.service}"   # see DEPLOY doc: makes AC-restore self-healing
 DRY="${KG_UPS_DRYRUN:-0}"
 
+# ── ntfy (token from a separate 0600 file — never hardcoded) ─────────────────
+NTFY_URL="${NTFY_URL:-http://127.0.0.1:8091/homelab-power}"
+NTFY_TOKEN="${NTFY_TOKEN:-}"
+[ -r /etc/nut/kg-ups.env ] && . /etc/nut/kg-ups.env
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 log() { logger -t kg-ups "$*" 2>/dev/null || true; echo "kg-ups: $*"; }
 run() { if [ "$DRY" = "1" ]; then echo "DRY: $*"; else "$@"; fi; }
 
+notify() {  # $1=title  $2=body  [$3=priority]  [$4=tags]
+  local title="$1" body="$2" prio="${3:-default}" tags="${4:-zap}"
+  log "NOTIFY: ${title}"
+  if [ -z "$NTFY_TOKEN" ]; then
+    log "NTFY_TOKEN not set — skipping push (check /etc/nut/kg-ups.env)"
+    return 0
+  fi
+  # Best-effort: never block shutdown on a failed notify. Sends even in dry-run (read-only).
+  curl -fsS -m 5 \
+    -H "Authorization: Bearer ${NTFY_TOKEN}" \
+    -H "Title: ${title}" -H "Priority: ${prio}" -H "Tags: ${tags}" \
+    -d "${body}" "${NTFY_URL}" >/dev/null 2>&1 \
+    || log "notify failed (expected if internet/ntfy is down)"
+}
+
 ssh_torre() {
-  run ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+  run ssh -i /var/lib/nut/.ssh/id_ed25519 \
+      -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
       "${TORRE_SSH_USER}@${TORRE_IP}" "$@"
 }
 
+# ── Events ───────────────────────────────────────────────────────────────────
 case "${1:-}" in
 
   torre-down)
-    # Fired by upssched ~60s after ONBATT (cancelled if power returns first).
+    notify "Blackout — torre in spegnimento" \
+           "Corrente assente da >60s. Torre si spegne ora; nexus resta su a batteria." \
+           "urgent" "electric_plug"
     log "on battery -> emergency shutdown of torre"
     if ssh_torre torre-emergency-shutdown; then
       log "torre shutdown issued"
@@ -46,12 +75,13 @@ case "${1:-}" in
     ;;
 
   nexus-down)
-    # Fired by upsmon SHUTDOWNCMD at LOWBATT. Bring the stacks down cleanly, then halt.
+    notify "Batteria scarica — nexus in spegnimento" \
+           "LOWBATT raggiunto. Compose down, poi halt. Tutto riparte da solo con la corrente." \
+           "urgent" "battery"
     log "low battery -> stopping stacks and powering off nexus"
     if systemctl list-unit-files 2>/dev/null | grep -q "^${COMPOSE_UNIT}"; then
       run systemctl stop "$COMPOSE_UNIT" || log "WARN: systemctl stop ${COMPOSE_UNIT} failed"
     else
-      # fallback if the unit is not installed yet
       ( cd "$COMPOSE_DIR" && run docker compose down --timeout 30 ) || log "WARN: compose down failed"
     fi
     run sync
@@ -60,19 +90,15 @@ case "${1:-}" in
     ;;
 
   notify-onbatt)
-    # Best-effort: ntfy runs on nexus and push needs internet, so this only lands if the
-    # modem/router are on the UPS too. Never let a failed notify block the shutdown.
-    log "NOTIFY: on battery"
-    run curl -fsS -m 5 -H "Title: Blackout - passaggio a batteria" -H "Priority: urgent" \
-      -H "Tags: electric_plug" -d "Corrente assente. Torre si spegne tra ~60s; nexus resta su a batteria." \
-      "http://ntfy/genome-ingest" >/dev/null 2>&1 || log "notify failed (expected without internet)"
+    notify "Blackout — passaggio a batteria" \
+           "Corrente assente. Torre si spegne tra ~60s; nexus resta su a batteria." \
+           "urgent" "electric_plug"
     ;;
 
   notify-online)
-    log "NOTIFY: power restored"
-    run curl -fsS -m 5 -H "Title: Corrente ripristinata" -H "Priority: default" \
-      -H "Tags: white_check_mark" -d "Alimentazione tornata. Nessuna azione: torre riparte da sola al prossimo ingest (WoL)." \
-      "http://ntfy/genome-ingest" >/dev/null 2>&1 || true
+    notify "Corrente ripristinata" \
+           "Alimentazione tornata. Torre riparte da sola al prossimo ingest (WoL)." \
+           "default" "white_check_mark"
     ;;
 
   *)
