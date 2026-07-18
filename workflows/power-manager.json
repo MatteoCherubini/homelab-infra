@@ -318,11 +318,11 @@
           "conditions": [
             {
               "id": "2bfe0e03-7557-467c-81e6-de93e11d9344",
-              "leftValue": "={{ $json.stdout }}",
+              "leftValue": "={{ ($json.stdout || '').trim() }}",
               "rightValue": "running",
               "operator": {
                 "type": "string",
-                "operation": "contains"
+                "operation": "equals"
               }
             }
           ],
@@ -342,7 +342,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"ai-node status\""
+        "command": "ssh hypervisor \"hypervisor-vm-arbiter status 101\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
