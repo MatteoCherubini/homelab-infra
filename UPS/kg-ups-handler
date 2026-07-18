@@ -1,0 +1,83 @@
+#!/bin/bash
+# =============================================================================
+# kg-ups-handler — blackout orchestration on NEXUS (NUT: upssched CMDSCRIPT + upsmon SHUTDOWNCMD).
+#
+# Strategy, driven by the actual power numbers of this homelab:
+#   torre (GPU, up to ~400W)  = the battery hog and the slowest to stop  -> goes down EARLY,
+#                               ~60s after the power fails (rides out flickers, no more).
+#   nexus (~80W)              = light load -> keeps running on battery for a long time once
+#                               torre is off, so it stays up to notify and be the last to go.
+#   nexus goes down at LOWBATT, via upsmon's SHUTDOWNCMD (the standard NUT path, which also
+#   arms the killpower flag so the UPS cuts output and everything reboots on AC restore).
+#
+# Why not decide on battery.runtime: this model's runtimecal is calibrated at 4%/8% load, so
+# any runtime estimate under real load is fiction. Time-since-ONBATT is honest; runtime is not.
+#
+# Install ON NEXUS: install -m 0755 kg-ups-handler /usr/local/bin/kg-ups-handler
+# Called as:  kg-ups-handler <event>     (torre-down | nexus-down | notify-onbatt | notify-online)
+# Test (no shutdown):  KG_UPS_DRYRUN=1 kg-ups-handler torre-down
+# =============================================================================
+set -u
+
+TORRE_IP="${TORRE_IP:-10.0.10.10}"                  # IP, never a hostname: DNS may be down
+TORRE_SSH_USER="${TORRE_SSH_USER:-root}"
+COMPOSE_DIR="${COMPOSE_DIR:-/opt/homelab-infra}"
+COMPOSE_UNIT="${COMPOSE_UNIT:-homelab-compose.service}"   # see DEPLOY doc: makes AC-restore self-healing
+DRY="${KG_UPS_DRYRUN:-0}"
+
+log() { logger -t kg-ups "$*" 2>/dev/null || true; echo "kg-ups: $*"; }
+run() { if [ "$DRY" = "1" ]; then echo "DRY: $*"; else "$@"; fi; }
+
+ssh_torre() {
+  run ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+      "${TORRE_SSH_USER}@${TORRE_IP}" "$@"
+}
+
+case "${1:-}" in
+
+  torre-down)
+    # Fired by upssched ~60s after ONBATT (cancelled if power returns first).
+    log "on battery -> emergency shutdown of torre"
+    if ssh_torre torre-emergency-shutdown; then
+      log "torre shutdown issued"
+    else
+      log "torre unreachable or already off (nothing to do)"
+    fi
+    ;;
+
+  nexus-down)
+    # Fired by upsmon SHUTDOWNCMD at LOWBATT. Bring the stacks down cleanly, then halt.
+    log "low battery -> stopping stacks and powering off nexus"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${COMPOSE_UNIT}"; then
+      run systemctl stop "$COMPOSE_UNIT" || log "WARN: systemctl stop ${COMPOSE_UNIT} failed"
+    else
+      # fallback if the unit is not installed yet
+      ( cd "$COMPOSE_DIR" && run docker compose down --timeout 30 ) || log "WARN: compose down failed"
+    fi
+    run sync
+    log "halting"
+    run /sbin/shutdown -h now
+    ;;
+
+  notify-onbatt)
+    # Best-effort: ntfy runs on nexus and push needs internet, so this only lands if the
+    # modem/router are on the UPS too. Never let a failed notify block the shutdown.
+    log "NOTIFY: on battery"
+    run curl -fsS -m 5 -H "Title: Blackout - passaggio a batteria" -H "Priority: urgent" \
+      -H "Tags: electric_plug" -d "Corrente assente. Torre si spegne tra ~60s; nexus resta su a batteria." \
+      "http://ntfy/genome-ingest" >/dev/null 2>&1 || log "notify failed (expected without internet)"
+    ;;
+
+  notify-online)
+    log "NOTIFY: power restored"
+    run curl -fsS -m 5 -H "Title: Corrente ripristinata" -H "Priority: default" \
+      -H "Tags: white_check_mark" -d "Alimentazione tornata. Nessuna azione: torre riparte da sola al prossimo ingest (WoL)." \
+      "http://ntfy/genome-ingest" >/dev/null 2>&1 || true
+    ;;
+
+  *)
+    log "unknown event: ${1:-<empty>}"
+    exit 1
+    ;;
+esac
+exit 0
