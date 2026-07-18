@@ -259,7 +259,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        912,
+        1392,
         -1056
       ],
       "id": "ad82c37a-b1ce-4158-a4a7-9eaa98582faf",
@@ -273,8 +273,8 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        752,
-        -880
+        992,
+        -960
       ],
       "id": "18d52fbe-8479-429e-b8b3-8a21ac30c738",
       "name": "A8 - Poll vm101 running",
@@ -294,8 +294,8 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        576,
-        -880
+        816,
+        -960
       ],
       "id": "28d92c37-23c3-4696-8531-edc3d2cb8537",
       "name": "A7 - vm101 start",
