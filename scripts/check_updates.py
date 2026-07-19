@@ -493,6 +493,7 @@ def check_updates(tracked_services: list) -> tuple:
         criticality     = svc.get("criticality", "low")
         gh_owner        = svc.get("github_owner")
         gh_repo         = svc.get("github_repo_name")
+        repo_url        = svc.get("github_repo_url", "")
 
         result = {**svc, "checked_at": now_iso}
 
@@ -513,25 +514,25 @@ def check_updates(tracked_services: list) -> tuple:
             source_method = "rss"
             api_error_msg = None
 
-            # ── Prima linea: GitHub API (filtra prerelease strutturalmente) ─
-            if gh_owner and gh_repo:
+            # ── Prima linea: Forge API (GitHub, Codeberg, Gitea...) ─────────
+            if gh_owner and gh_repo and repo_url:
                 try:
-                    api_result    = get_latest_from_github_api(
-                        gh_owner, gh_repo, current_version
+                    api_result    = get_latest_from_forge_api(
+                        repo_url, gh_owner, gh_repo, current_version
                     )
                     latest_raw    = api_result["version"]
                     is_prerelease = api_result["is_prerelease"]
                     release_label = api_result["release_label"]
-                    source_method = "github_api"
+                    source_method = "forge_api"
                 except Exception as api_err:
                     api_error_msg = f"{type(api_err).__name__}: {api_err}"
                     print(
-                        f"⚠️  GitHub API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
+                        f"⚠️  Forge API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
                         f"{api_error_msg}",
                         file=sys.stderr
                     )
 
-            # ── Fallback: RSS (per non-GitHub o se l'API ha fallito) ────────
+            # ── Fallback: RSS (se l'API del forge ha fallito o non è disponibile) ─
             if latest_raw is None:
                 latest_raw    = get_latest_from_rss(rss_url, current_version)
                 is_prerelease = False          # RSS non lo sa: assume stabile
@@ -570,42 +571,42 @@ def check_updates(tracked_services: list) -> tuple:
         except requests.exceptions.HTTPError as e:
             detail = f"HTTP {e.response.status_code} — {rss_url}"
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.ConnectionError:
             detail = f"Connessione rifiutata o DNS fallito — {rss_url}"
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.Timeout:
             detail = f"Timeout dopo {TIMEOUT}s — {rss_url}"
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except ET.ParseError:
             detail = f"Feed XML non valido — {rss_url}"
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except ValueError as e:
             detail = str(e)
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except Exception as e:
             detail = f"Errore imprevisto: {type(e).__name__}: {e}"
             if api_error_msg:
-                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
