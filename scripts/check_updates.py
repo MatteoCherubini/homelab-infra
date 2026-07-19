@@ -440,7 +440,34 @@ def check_updates(tracked_services: list) -> tuple:
         time.sleep(THROTTLE)
 
         try:
-            latest_raw = get_latest_from_rss(rss_url, current_version)
+            latest_raw    = None
+            is_prerelease = False
+            release_label = "unknown"
+            source_method = "rss"
+
+            # ── Prima linea: GitHub API (filtra prerelease strutturalmente) ─
+            if gh_owner and gh_repo:
+                try:
+                    api_result    = get_latest_from_github_api(
+                        gh_owner, gh_repo, current_version
+                    )
+                    latest_raw    = api_result["version"]
+                    is_prerelease = api_result["is_prerelease"]
+                    release_label = api_result["release_label"]
+                    source_method = "github_api"
+                except Exception as api_err:
+                    print(
+                        f"⚠️  GitHub API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
+                        f"{type(api_err).__name__}: {api_err}",
+                        file=sys.stderr
+                    )
+
+            # ── Fallback: RSS (per non-GitHub o se l'API ha fallito) ────────
+            if latest_raw is None:
+                latest_raw    = get_latest_from_rss(rss_url, current_version)
+                is_prerelease = False          # RSS non lo sa: assume stabile
+                release_label = "unverified"   # Segnala che non è stato validato via API
+                source_method = "rss"
 
             curr_tuple              = extract_semver(current_version)
             lat_tuple               = extract_semver(latest_raw)
@@ -461,6 +488,9 @@ def check_updates(tracked_services: list) -> tuple:
                 "is_major_bump":  is_major,
                 "has_update":     bump_type in ("major", "minor", "patch"),
                 "version_gap":    version_gap,
+                "is_prerelease":  is_prerelease,
+                "release_label":  release_label,
+                "source_method":  source_method,
             })
 
             if result["has_update"]:
