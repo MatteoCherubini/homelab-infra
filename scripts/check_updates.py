@@ -73,12 +73,14 @@ FORGE_REGISTRY = [
             "X-GitHub-Api-Version": "2022-11-28",
         },
         "params":  {"per_page": 30},
+        "timeout": 10,
     },
     {
         "host":    "codeberg.org",
         "api_tpl": "https://codeberg.org/api/v1/repos/{owner}/{repo}/releases",
         "headers": {"Accept": "application/json"},
         "params":  {"limit": 30},
+        "timeout": 30,
     },
     # Aggiungere qui altre istanze Gitea/Forgejo/GitLab se necessario:
     # {
@@ -373,7 +375,8 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
     url    = forge["api_tpl"].format(owner=owner, repo=repo)
     headers = {**forge["headers"], "User-Agent": "Homelab-Update-Checker/1.0"}
 
-    resp = requests.get(url, timeout=TIMEOUT, headers=headers,
+    timeout = forge.get("timeout", TIMEOUT)
+    resp = requests.get(url, timeout=timeout, headers=headers,
                         params=forge.get("params", {}))
     resp.raise_for_status()
 
