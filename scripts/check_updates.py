@@ -471,14 +471,14 @@ def get_latest_from_rss(url: str, current_version: str = "") -> str:
 
 def check_updates(tracked_services: list) -> tuple:
     """
-    Controlla gli RSS solo per i servizi tracciati (is_tracked=True e rss_url valorizzato).
-    Usa l'API GitHub (/releases) come prima scelta per i repo GitHub, con fallback RSS.
+    Controlla le release per i servizi tracciati (is_tracked=True e rss_url valorizzato).
+    Usa l'API del forge (GitHub, Codeberg, Gitea...) come prima scelta, con fallback RSS.
     Ritorna (updates, errors, unchanged).
 
     Ogni item viene arricchito con:
       latest_version, bump_type, is_major_bump, has_update, checked_at,
       is_prerelease, release_label ("stable"|"unverified"|"unknown"),
-      source_method ("github_api"|"rss")
+      source_method ("forge_api"|"rss")
     oppure:
       error_detail, checked_at     (in caso di errore)
     """
