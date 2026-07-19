@@ -27,6 +27,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 try:
     import requests
@@ -56,6 +57,46 @@ HTTP_HEADERS = {
 }
 
 UNSTABLE_KEYWORDS = ("alpha", "beta", "rc", "test", "dev", "nightly", "preview")
+
+# ── Forge API registry ────────────────────────────────────────────────────────
+# Ogni forge ha: host da matchare, template URL per l'API releases,
+# headers specifici, e parametri query per la paginazione.
+# L'ordine conta: il primo match vince.
+# Per istanze Gitea/Forgejo non in lista, c'è il GITEA_FALLBACK automatico.
+
+FORGE_REGISTRY = [
+    {
+        "host":    "github.com",
+        "api_tpl": "https://api.github.com/repos/{owner}/{repo}/releases",
+        "headers": {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        "params":  {"per_page": 30},
+        "timeout": 10,
+    },
+    {
+        "host":    "codeberg.org",
+        "api_tpl": "https://codeberg.org/api/v1/repos/{owner}/{repo}/releases",
+        "headers": {"Accept": "application/json"},
+        "params":  {"limit": 30},
+        "timeout": 30,
+    },
+    # Aggiungere qui altre istanze Gitea/Forgejo/GitLab se necessario:
+    # {
+    #     "host":    "gitea.example.com",
+    #     "api_tpl": "https://gitea.example.com/api/v1/repos/{owner}/{repo}/releases",
+    #     "headers": {"Accept": "application/json"},
+    #     "params":  {"limit": 30},
+    # },
+]
+
+# Fallback generico per qualsiasi istanza Gitea/Forgejo non nel registry
+GITEA_FALLBACK = {
+    "api_tpl": "{scheme}://{netloc}/api/v1/repos/{owner}/{repo}/releases",
+    "headers": {"Accept": "application/json"},
+    "params":  {"limit": 30},
+}
 
 # Regex per estrarre Major.Minor.Patch da qualsiasi stringa di versione
 SEMVER_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
@@ -290,7 +331,97 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
     return manifest, untracked_warnings
 
 
-# ── RSS check ─────────────────────────────────────────────────────────────────
+# ── Forge API + RSS check ─────────────────────────────────────────────────────
+
+def _resolve_forge(repo_url: str) -> dict:
+    """
+    Dato un URL repository, ritorna il pattern API da usare.
+    Cerca nel FORGE_REGISTRY per host esatto; se non trova, costruisce
+    un endpoint Gitea/Forgejo generico dal dominio (fallback universale).
+    """
+    parsed = urlparse(repo_url)
+    host   = parsed.netloc.lower()
+
+    for entry in FORGE_REGISTRY:
+        if entry["host"] == host:
+            return entry
+
+    # Fallback: qualsiasi dominio sconosciuto → assume Gitea/Forgejo API
+    return {
+        "host":    host,
+        "api_tpl": GITEA_FALLBACK["api_tpl"].format(
+            scheme=parsed.scheme, netloc=parsed.netloc,
+            owner="{owner}", repo="{repo}"
+        ),
+        "headers": GITEA_FALLBACK["headers"],
+        "params":  GITEA_FALLBACK["params"],
+    }
+
+
+def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
+                               current_version: str = "") -> dict:
+    """
+    Rileva il tipo di forge dall'URL e interroga l'API releases appropriata.
+    Supporta GitHub, Gitea/Forgejo (Codeberg), e qualsiasi forge con API
+    Gitea-compatibile. Il registry è estensibile senza toccare il codice.
+
+    Ritorna un dict:
+      {"version": "...", "is_prerelease": False, "release_label": "stable",
+       "forge": "github.com"|"codeberg.org"|...}
+
+    Lancia eccezione se non trova release stabili o se la rete fallisce.
+    """
+    forge  = _resolve_forge(repo_url)
+    url    = forge["api_tpl"].format(owner=owner, repo=repo)
+    headers = {**forge["headers"], "User-Agent": "Homelab-Update-Checker/1.0"}
+
+    timeout = forge.get("timeout", TIMEOUT)
+    resp = requests.get(url, timeout=timeout, headers=headers,
+                        params=forge.get("params", {}))
+    resp.raise_for_status()
+
+    releases = resp.json()
+    if not isinstance(releases, list):
+        raise ValueError(f"Risposta API inattesa da {forge['host']} per {owner}/{repo}")
+
+    current_semver = extract_semver(current_version)
+    current_major  = current_semver[0] if current_semver != (0, 0, 0) else None
+
+    same_branch_stable = []
+    any_stable         = []
+
+    for rel in releases:
+        if rel.get("draft", False):
+            continue
+
+        tag  = rel.get("tag_name", "")
+        pre  = rel.get("prerelease", False)
+
+        # Doppio filtro: campo strutturato 'prerelease' + keyword nel titolo/tag
+        name = rel.get("name", "") or tag
+        if pre or not is_stable_release(name) or not is_stable_release(tag):
+            continue
+
+        any_stable.append(tag)
+
+        if current_major is not None:
+            entry_semver = extract_semver(tag)
+            if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
+                same_branch_stable.append(tag)
+
+    chosen = (same_branch_stable or any_stable or [None])[0]
+    if chosen is None:
+        raise ValueError(
+            f"Nessuna release stabile trovata via {forge['host']} API per {owner}/{repo}"
+        )
+
+    return {
+        "version":       chosen,
+        "is_prerelease": False,
+        "release_label": "stable",
+        "forge":         forge["host"],
+    }
+
 
 def is_stable_release(title: str) -> bool:
     """True se il titolo della release non contiene keyword di pre-release."""
@@ -343,11 +474,14 @@ def get_latest_from_rss(url: str, current_version: str = "") -> str:
 
 def check_updates(tracked_services: list) -> tuple:
     """
-    Controlla gli RSS solo per i servizi tracciati (is_tracked=True e rss_url valorizzato).
+    Controlla le release per i servizi tracciati (is_tracked=True e rss_url valorizzato).
+    Usa l'API del forge (GitHub, Codeberg, Gitea...) come prima scelta, con fallback RSS.
     Ritorna (updates, errors, unchanged).
 
     Ogni item viene arricchito con:
-      latest_version, bump_type, is_major_bump, has_update, checked_at
+      latest_version, bump_type, is_major_bump, has_update, checked_at,
+      is_prerelease, release_label ("stable"|"unverified"|"unknown"),
+      source_method ("forge_api"|"rss")
     oppure:
       error_detail, checked_at     (in caso di errore)
     """
@@ -360,12 +494,16 @@ def check_updates(tracked_services: list) -> tuple:
         rss_url         = svc.get("rss_url")
         current_version = svc.get("current_version", "")
         criticality     = svc.get("criticality", "low")
+        gh_owner        = svc.get("github_owner")
+        gh_repo         = svc.get("github_repo_name")
+        repo_url        = svc.get("github_repo_url", "")
 
         result = {**svc, "checked_at": now_iso}
 
         # ── Servizi stateless (latest) — nessun check versione necessario ──
         if not rss_url or current_version == "latest":
             result["skip_reason"] = "stateless o rss_url assente"
+            result.update({"is_prerelease": False, "release_label": "unknown"})
             unchanged.append(result)
             continue
 
@@ -373,7 +511,36 @@ def check_updates(tracked_services: list) -> tuple:
         time.sleep(THROTTLE)
 
         try:
-            latest_raw = get_latest_from_rss(rss_url, current_version)
+            latest_raw    = None
+            is_prerelease = False
+            release_label = "unknown"
+            source_method = "rss"
+            api_error_msg = None
+
+            # ── Prima linea: Forge API (GitHub, Codeberg, Gitea...) ─────────
+            if gh_owner and gh_repo and repo_url:
+                try:
+                    api_result    = get_latest_from_forge_api(
+                        repo_url, gh_owner, gh_repo, current_version
+                    )
+                    latest_raw    = api_result["version"]
+                    is_prerelease = api_result["is_prerelease"]
+                    release_label = api_result["release_label"]
+                    source_method = "forge_api"
+                except Exception as api_err:
+                    api_error_msg = f"{type(api_err).__name__}: {api_err}"
+                    print(
+                        f"⚠️  Forge API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
+                        f"{api_error_msg}",
+                        file=sys.stderr
+                    )
+
+            # ── Fallback: RSS (se l'API del forge ha fallito o non è disponibile) ─
+            if latest_raw is None:
+                latest_raw    = get_latest_from_rss(rss_url, current_version)
+                is_prerelease = False          # RSS non lo sa: assume stabile
+                release_label = "unverified"   # Segnala che non è stato validato via API
+                source_method = "rss"
 
             curr_tuple              = extract_semver(current_version)
             lat_tuple               = extract_semver(latest_raw)
@@ -394,6 +561,9 @@ def check_updates(tracked_services: list) -> tuple:
                 "is_major_bump":  is_major,
                 "has_update":     bump_type in ("major", "minor", "patch"),
                 "version_gap":    version_gap,
+                "is_prerelease":  is_prerelease,
+                "release_label":  release_label,
+                "source_method":  source_method,
             })
 
             if result["has_update"]:
@@ -402,27 +572,45 @@ def check_updates(tracked_services: list) -> tuple:
                 unchanged.append(result)
 
         except requests.exceptions.HTTPError as e:
-            result["error_detail"] = f"HTTP {e.response.status_code} — {rss_url}"
+            detail = f"HTTP {e.response.status_code} — {rss_url}"
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.ConnectionError:
-            result["error_detail"] = f"Connessione rifiutata o DNS fallito — {rss_url}"
+            detail = f"Connessione rifiutata o DNS fallito — {rss_url}"
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.Timeout:
-            result["error_detail"] = f"Timeout dopo {TIMEOUT}s — {rss_url}"
+            detail = f"Timeout dopo {TIMEOUT}s — {rss_url}"
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except ET.ParseError:
-            result["error_detail"] = f"Feed XML non valido — {rss_url}"
+            detail = f"Feed XML non valido — {rss_url}"
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except ValueError as e:
-            result["error_detail"] = str(e)
+            detail = str(e)
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except Exception as e:
-            result["error_detail"] = f"Errore imprevisto: {type(e).__name__}: {e}"
+            detail = f"Errore imprevisto: {type(e).__name__}: {e}"
+            if api_error_msg:
+                detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
     return updates, errors, unchanged
