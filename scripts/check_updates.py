@@ -329,26 +329,57 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
     return manifest, untracked_warnings
 
 
-# ── GitHub API + RSS check ────────────────────────────────────────────────────
+# ── Forge API + RSS check ─────────────────────────────────────────────────────
 
-def get_latest_from_github_api(owner: str, repo: str, current_version: str = "") -> dict:
+def _resolve_forge(repo_url: str) -> dict:
     """
-    Usa l'API GitHub /releases per trovare la prima release stabile, filtrando
-    i prerelease e i draft tramite i campi strutturati (non solo il titolo).
+    Dato un URL repository, ritorna il pattern API da usare.
+    Cerca nel FORGE_REGISTRY per host esatto; se non trova, costruisce
+    un endpoint Gitea/Forgejo generico dal dominio (fallback universale).
+    """
+    parsed = urlparse(repo_url)
+    host   = parsed.netloc.lower()
+
+    for entry in FORGE_REGISTRY:
+        if entry["host"] == host:
+            return entry
+
+    # Fallback: qualsiasi dominio sconosciuto → assume Gitea/Forgejo API
+    return {
+        "host":    host,
+        "api_tpl": GITEA_FALLBACK["api_tpl"].format(
+            scheme=parsed.scheme, netloc=parsed.netloc,
+            owner="{owner}", repo="{repo}"
+        ),
+        "headers": GITEA_FALLBACK["headers"],
+        "params":  GITEA_FALLBACK["params"],
+    }
+
+
+def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
+                               current_version: str = "") -> dict:
+    """
+    Rileva il tipo di forge dall'URL e interroga l'API releases appropriata.
+    Supporta GitHub, Gitea/Forgejo (Codeberg), e qualsiasi forge con API
+    Gitea-compatibile. Il registry è estensibile senza toccare il codice.
 
     Ritorna un dict:
-      {"version": "...", "is_prerelease": False, "release_label": "stable"}
+      {"version": "...", "is_prerelease": False, "release_label": "stable",
+       "forge": "github.com"|"codeberg.org"|...}
 
-    Lancia eccezione se non trova nulla o se la rete fallisce.
+    Lancia eccezione se non trova release stabili o se la rete fallisce.
     """
-    url = f"https://api.github.com/repos/{owner}/{repo}/releases"
-    resp = requests.get(url, timeout=TIMEOUT, headers=GITHUB_API_HEADERS,
-                        params={"per_page": 30})
+    forge  = _resolve_forge(repo_url)
+    url    = forge["api_tpl"].format(owner=owner, repo=repo)
+    headers = {**forge["headers"], "User-Agent": "Homelab-Update-Checker/1.0"}
+
+    resp = requests.get(url, timeout=TIMEOUT, headers=headers,
+                        params=forge.get("params", {}))
     resp.raise_for_status()
 
     releases = resp.json()
     if not isinstance(releases, list):
-        raise ValueError(f"Risposta API inattesa per {owner}/{repo}")
+        raise ValueError(f"Risposta API inattesa da {forge['host']} per {owner}/{repo}")
 
     current_semver = extract_semver(current_version)
     current_major  = current_semver[0] if current_semver != (0, 0, 0) else None
@@ -363,7 +394,7 @@ def get_latest_from_github_api(owner: str, repo: str, current_version: str = "")
         tag  = rel.get("tag_name", "")
         pre  = rel.get("prerelease", False)
 
-        # Doppio filtro: campo GitHub 'prerelease' + keyword nel titolo/tag
+        # Doppio filtro: campo strutturato 'prerelease' + keyword nel titolo/tag
         name = rel.get("name", "") or tag
         if pre or not is_stable_release(name) or not is_stable_release(tag):
             continue
@@ -377,12 +408,15 @@ def get_latest_from_github_api(owner: str, repo: str, current_version: str = "")
 
     chosen = (same_branch_stable or any_stable or [None])[0]
     if chosen is None:
-        raise ValueError(f"Nessuna release stabile trovata via API per {owner}/{repo}")
+        raise ValueError(
+            f"Nessuna release stabile trovata via {forge['host']} API per {owner}/{repo}"
+        )
 
     return {
         "version":       chosen,
         "is_prerelease": False,
         "release_label": "stable",
+        "forge":         forge["host"],
     }
 
 
