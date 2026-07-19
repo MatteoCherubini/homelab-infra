@@ -296,7 +296,62 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
     return manifest, untracked_warnings
 
 
-# ── RSS check ─────────────────────────────────────────────────────────────────
+# ── GitHub API + RSS check ────────────────────────────────────────────────────
+
+def get_latest_from_github_api(owner: str, repo: str, current_version: str = "") -> dict:
+    """
+    Usa l'API GitHub /releases per trovare la prima release stabile, filtrando
+    i prerelease e i draft tramite i campi strutturati (non solo il titolo).
+
+    Ritorna un dict:
+      {"version": "...", "is_prerelease": False, "release_label": "stable"}
+
+    Lancia eccezione se non trova nulla o se la rete fallisce.
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}/releases"
+    resp = requests.get(url, timeout=TIMEOUT, headers=GITHUB_API_HEADERS,
+                        params={"per_page": 30})
+    resp.raise_for_status()
+
+    releases = resp.json()
+    if not isinstance(releases, list):
+        raise ValueError(f"Risposta API inattesa per {owner}/{repo}")
+
+    current_semver = extract_semver(current_version)
+    current_major  = current_semver[0] if current_semver != (0, 0, 0) else None
+
+    same_branch_stable = []
+    any_stable         = []
+
+    for rel in releases:
+        if rel.get("draft", False):
+            continue
+
+        tag  = rel.get("tag_name", "")
+        pre  = rel.get("prerelease", False)
+
+        # Doppio filtro: campo GitHub 'prerelease' + keyword nel titolo/tag
+        name = rel.get("name", "") or tag
+        if pre or not is_stable_release(name) or not is_stable_release(tag):
+            continue
+
+        any_stable.append(tag)
+
+        if current_major is not None:
+            entry_semver = extract_semver(tag)
+            if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
+                same_branch_stable.append(tag)
+
+    chosen = (same_branch_stable or any_stable or [None])[0]
+    if chosen is None:
+        raise ValueError(f"Nessuna release stabile trovata via API per {owner}/{repo}")
+
+    return {
+        "version":       chosen,
+        "is_prerelease": False,
+        "release_label": "stable",
+    }
+
 
 def is_stable_release(title: str) -> bool:
     """True se il titolo della release non contiene keyword di pre-release."""
