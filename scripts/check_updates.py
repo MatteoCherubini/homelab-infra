@@ -444,6 +444,7 @@ def check_updates(tracked_services: list) -> tuple:
             is_prerelease = False
             release_label = "unknown"
             source_method = "rss"
+            api_error_msg = None
 
             # ── Prima linea: GitHub API (filtra prerelease strutturalmente) ─
             if gh_owner and gh_repo:
@@ -456,9 +457,10 @@ def check_updates(tracked_services: list) -> tuple:
                     release_label = api_result["release_label"]
                     source_method = "github_api"
                 except Exception as api_err:
+                    api_error_msg = f"{type(api_err).__name__}: {api_err}"
                     print(
                         f"⚠️  GitHub API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
-                        f"{type(api_err).__name__}: {api_err}",
+                        f"{api_error_msg}",
                         file=sys.stderr
                     )
 
@@ -499,27 +501,45 @@ def check_updates(tracked_services: list) -> tuple:
                 unchanged.append(result)
 
         except requests.exceptions.HTTPError as e:
-            result["error_detail"] = f"HTTP {e.response.status_code} — {rss_url}"
+            detail = f"HTTP {e.response.status_code} — {rss_url}"
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.ConnectionError:
-            result["error_detail"] = f"Connessione rifiutata o DNS fallito — {rss_url}"
+            detail = f"Connessione rifiutata o DNS fallito — {rss_url}"
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.Timeout:
-            result["error_detail"] = f"Timeout dopo {TIMEOUT}s — {rss_url}"
+            detail = f"Timeout dopo {TIMEOUT}s — {rss_url}"
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except ET.ParseError:
-            result["error_detail"] = f"Feed XML non valido — {rss_url}"
+            detail = f"Feed XML non valido — {rss_url}"
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except ValueError as e:
-            result["error_detail"] = str(e)
+            detail = str(e)
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
         except Exception as e:
-            result["error_detail"] = f"Errore imprevisto: {type(e).__name__}: {e}"
+            detail = f"Errore imprevisto: {type(e).__name__}: {e}"
+            if api_error_msg:
+                detail = f"GitHub API: {api_error_msg} → RSS fallback: {detail}"
+            result["error_detail"] = detail
             errors.append(result)
 
     return updates, errors, unchanged
