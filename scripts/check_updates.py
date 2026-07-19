@@ -405,10 +405,13 @@ def get_latest_from_rss(url: str, current_version: str = "") -> str:
 def check_updates(tracked_services: list) -> tuple:
     """
     Controlla gli RSS solo per i servizi tracciati (is_tracked=True e rss_url valorizzato).
+    Usa l'API GitHub (/releases) come prima scelta per i repo GitHub, con fallback RSS.
     Ritorna (updates, errors, unchanged).
 
     Ogni item viene arricchito con:
-      latest_version, bump_type, is_major_bump, has_update, checked_at
+      latest_version, bump_type, is_major_bump, has_update, checked_at,
+      is_prerelease, release_label ("stable"|"unverified"|"unknown"),
+      source_method ("github_api"|"rss")
     oppure:
       error_detail, checked_at     (in caso di errore)
     """
@@ -421,12 +424,15 @@ def check_updates(tracked_services: list) -> tuple:
         rss_url         = svc.get("rss_url")
         current_version = svc.get("current_version", "")
         criticality     = svc.get("criticality", "low")
+        gh_owner        = svc.get("github_owner")
+        gh_repo         = svc.get("github_repo_name")
 
         result = {**svc, "checked_at": now_iso}
 
         # ── Servizi stateless (latest) — nessun check versione necessario ──
         if not rss_url or current_version == "latest":
             result["skip_reason"] = "stateless o rss_url assente"
+            result.update({"is_prerelease": False, "release_label": "unknown"})
             unchanged.append(result)
             continue
 
