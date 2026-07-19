@@ -57,6 +57,12 @@ HTTP_HEADERS = {
 
 UNSTABLE_KEYWORDS = ("alpha", "beta", "rc", "test", "dev", "nightly", "preview")
 
+GITHUB_API_HEADERS = {
+    "User-Agent": "Homelab-Update-Checker/1.0",
+    "Accept":     "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+
 # Regex per estrarre Major.Minor.Patch da qualsiasi stringa di versione
 SEMVER_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
