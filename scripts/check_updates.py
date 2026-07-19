@@ -27,6 +27,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 try:
     import requests
@@ -57,10 +58,42 @@ HTTP_HEADERS = {
 
 UNSTABLE_KEYWORDS = ("alpha", "beta", "rc", "test", "dev", "nightly", "preview")
 
-GITHUB_API_HEADERS = {
-    "User-Agent": "Homelab-Update-Checker/1.0",
-    "Accept":     "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
+# ── Forge API registry ────────────────────────────────────────────────────────
+# Ogni forge ha: host da matchare, template URL per l'API releases,
+# headers specifici, e parametri query per la paginazione.
+# L'ordine conta: il primo match vince.
+# Per istanze Gitea/Forgejo non in lista, c'è il GITEA_FALLBACK automatico.
+
+FORGE_REGISTRY = [
+    {
+        "host":    "github.com",
+        "api_tpl": "https://api.github.com/repos/{owner}/{repo}/releases",
+        "headers": {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        "params":  {"per_page": 30},
+    },
+    {
+        "host":    "codeberg.org",
+        "api_tpl": "https://codeberg.org/api/v1/repos/{owner}/{repo}/releases",
+        "headers": {"Accept": "application/json"},
+        "params":  {"limit": 30},
+    },
+    # Aggiungere qui altre istanze Gitea/Forgejo/GitLab se necessario:
+    # {
+    #     "host":    "gitea.example.com",
+    #     "api_tpl": "https://gitea.example.com/api/v1/repos/{owner}/{repo}/releases",
+    #     "headers": {"Accept": "application/json"},
+    #     "params":  {"limit": 30},
+    # },
+]
+
+# Fallback generico per qualsiasi istanza Gitea/Forgejo non nel registry
+GITEA_FALLBACK = {
+    "api_tpl": "{scheme}://{netloc}/api/v1/repos/{owner}/{repo}/releases",
+    "headers": {"Accept": "application/json"},
+    "params":  {"limit": 30},
 }
 
 # Regex per estrarre Major.Minor.Patch da qualsiasi stringa di versione
