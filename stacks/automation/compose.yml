@@ -116,6 +116,9 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       GENERIC_TIMEZONE: ${TZ}
       HYPERVISOR_MAC: ${HYPERVISOR_MAC}
+      # ── Syncthing ─────────────────────────────────────────────────────────
+      SYNCTHING_URL: ${SYNCTHING_URL}
+      SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
     networks:
       - homelab
 
