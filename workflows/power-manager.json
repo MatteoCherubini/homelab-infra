@@ -528,7 +528,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "fallbackOutput": "extra"
+        }
       },
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
@@ -640,6 +642,41 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "98c19451-4dbc-4600-bcea-665472fdd819",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "2eb72100-1435-41d8-a2af-91c59de09a7b",
+              "name": "mode",
+              "value": "={{ $json.mode || '(empty)' }}",
+              "type": "string"
+            },
+            {
+              "id": "686361a3-cfbd-4928-bb7c-6ba6725bf20e",
+              "name": "blocked_by",
+              "value": "=Power Manager called with mode '{{ $json.mode || '' }}': expected ensure-on, ensure-off or status. Nothing was powered on or off.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        176
+      ],
+      "id": "02cbe4e9-3ad3-4d76-a0f6-e11831b34201",
+      "name": "D - Output unknown mode"
     }
   ],
   "pinData": {},
@@ -856,6 +893,13 @@
         [
           {
             "node": "C1 - Status compatto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "D - Output unknown mode",
             "type": "main",
             "index": 0
           }
