@@ -28,6 +28,10 @@ x-kg-env: &kg-env
   # N8N_SSRF_ALLOWED_HOSTNAMES and the public hostname is not; and this way the
   # call never leaves the machine, so it keeps working with the tunnel down.
   FORGEJO_URL: ${FORGEJO_URL}
+  # The address a PERSON reaches — never the same value as FORGEJO_URL above.
+  # Notifications build their tap target from this; unset, they emit no link
+  # and name the key in the message instead.
+  FORGEJO_WEB_BASE: ${FORGEJO_WEB_BASE}
   KG_NTFY_URL: ${KG_NTFY_URL}
   KG_NTFY_TOPIC: ${KG_NTFY_TOPIC}
   # AUTHORISATION list: who may start a phase by merging.
