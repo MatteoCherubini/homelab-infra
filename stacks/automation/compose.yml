@@ -37,12 +37,12 @@ x-kg-env: &kg-env
   # AUTHORISATION list: who may start a phase by merging.
   # Empty means nobody — it fails closed on purpose.
   KG_ALLOWED_SENDERS: ${KG_ALLOWED_SENDERS}
-  # The secret tail of each webhook URL. MUST match local.env in the
-  # orchestrator: the forge calls one URL and n8n listens on the other, and a
-  # mismatch is a 404 that reads like a routing problem.
-  KG_DECIDE_WEBHOOK_PATH: ${KG_DECIDE_WEBHOOK_PATH}
-  KG_PROJECT_WEBHOOK_PATH: ${KG_PROJECT_WEBHOOK_PATH}
-  KG_PR_REVIEW_WEBHOOK_PATH: ${KG_PR_REVIEW_WEBHOOK_PATH}
+  # NO KG_*_WEBHOOK_PATH HERE, deliberately. A Webhook node's `path` is
+  # registered when the workflow is ACTIVATED, before any execution context
+  # exists, so it cannot be an expression and n8n cannot read it from this
+  # environment: the value is typed into the node by hand on import. These three
+  # were passed in for a year, read by nothing, and a rotation was carried out
+  # against them while the nodes went on listening on their old paths.
   # The janitor already has a fallback (`|| 15`), so this is a preference.
   KG_IDLE_MINUTES: ${KG_IDLE_MINUTES:-30}
 
