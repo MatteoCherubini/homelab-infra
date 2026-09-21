@@ -11,9 +11,12 @@ services:
     environment:
       USER_UID: "${PUID:-1000}"
       USER_GID: "${PGID:-1000}"
-      FORGEJO__server__ROOT_URL: "https://git.keruhomelab.com/"
-      FORGEJO__server__DOMAIN: "git.keruhomelab.com"
-      FORGEJO__server__SSH_DOMAIN: "git.keruhomelab.com"
+      # Hostname pubblico: vive nel .env, non qui. Un compose file committato
+      # che contiene il dominio reale non è riusabile da nessun altro, e in un
+      # repository pubblico lo pubblica.
+      FORGEJO__server__ROOT_URL: "https://${FORGEJO_DOMAIN}/"
+      FORGEJO__server__DOMAIN: "${FORGEJO_DOMAIN}"
+      FORGEJO__server__SSH_DOMAIN: "${FORGEJO_DOMAIN}"
       FORGEJO__server__SSH_PORT: "22"
       FORGEJO__webhook__ALLOWED_HOST_LIST: "n8n,172.20.0.0/16,10.0.0.0/8"
     networks:

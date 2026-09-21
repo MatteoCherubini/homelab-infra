@@ -9,8 +9,9 @@ services:
     volumes:
       - ${DATA_ROOT}/vaultwarden/data:/data
     environment:
-      # Main domain for HTTPS and WebAuthn functionality
-      DOMAIN: "https://vault.keruhomelab.com/"
+      # Dominio principale, necessario a HTTPS e WebAuthn. Dal .env: WebAuthn
+      # lega le passkey a questo valore esatto, quindi è per-installazione.
+      DOMAIN: "https://${VAULTWARDEN_DOMAIN}/"
 
       # User registrations (Keep this set to 'false' in production)
       SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
