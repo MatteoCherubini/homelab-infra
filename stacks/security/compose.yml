@@ -9,23 +9,29 @@ services:
     volumes:
       - ${DATA_ROOT}/vaultwarden/data:/data
     environment:
-      # Main domain for HTTPS and WebAuthn functionality
-      DOMAIN: "https://vault.keruhomelab.com/"
+      # Main domain, required for HTTPS and WebAuthn. Read from .env because
+      # WebAuthn binds passkeys to this exact value, making it per-install.
+      DOMAIN: "https://${VAULTWARDEN_DOMAIN}/"
 
-      # User registrations (Keep this set to 'false' in production)
+      # User registrations (keep this 'false' in production)
       SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
       INVITATIONS_ALLOWED: "${VAULTWARDEN_INVITATIONS_ALLOWED:-true}"
 
-      # Admin Panel (Comment out in .env and recreate the container after setup)
-      ADMIN_TOKEN: "${VAULTWARDEN_ADMIN_TOKEN}"
+      # Admin panel. The empty default is deliberate: with no token
+      # Vaultwarden disables the panel, which is how this install is meant to
+      # sit. The `:-` states that explicitly — without it Compose warns on
+      # every command about a variable we chose not to set.
+      # To enable it: set VAULTWARDEN_ADMIN_TOKEN in .env to an Argon2 hash
+      # (`vaultwarden hash`), never to plaintext.
+      ADMIN_TOKEN: "${VAULTWARDEN_ADMIN_TOKEN:-}"
 
-      # Security and brute-force protection
+      # Brute-force protection
       LOGIN_RATELIMIT_MAX_BURST: "5"
       LOGIN_RATELIMIT_SECONDS: "300"
       ADMIN_RATELIMIT_MAX_BURST: "3"
       ADMIN_RATELIMIT_SECONDS: "300"
 
-      # SMTP config (Gmail)
+      # SMTP configuration
       SMTP_HOST: "${VAULTWARDEN_SMTP_HOST}"
       SMTP_PORT: "${VAULTWARDEN_SMTP_PORT:-587}"
       SMTP_SECURITY: "${VAULTWARDEN_SMTP_SECURITY:-starttls}"

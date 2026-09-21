@@ -1,11 +1,11 @@
 # 🟢 Homelab UPS Orchestration
 
-> Spegnimento ordinato torre → nexus su blackout, con ritorno automatico.
-> Basato su **NUT** (Network UPS Tools), **systemd**, **SSH forced-command** e **Docker Compose**.
+> Ordered shutdown, torre → nexus, on mains failure, with automatic recovery.
+> Built on **NUT** (Network UPS Tools), **systemd**, an **SSH forced command** and **Docker Compose**.
 
 ---
 
-## 📐 Architettura
+## 📐 Architecture
 
 ```
 ┌─────────────────┐      USB       ┌─────────────────┐
@@ -30,36 +30,36 @@
                                    └─────────────────┘
 ```
 
-### Strategia di spegnimento
+### Shutdown strategy
 
-| Nodo | Carico | Tempo spegnimento | Decisione |
-|------|--------|-------------------|-----------|
-| **torre** (GPU) | fino a ~400W | lento (guest → host) | **giù subito**, a `ONBATT + 60s` |
-| **nexus** | ~80W | veloce | **resta su**, giù a `LOWBATT` |
+| Node | Load | Shutdown time | Decision |
+|------|------|---------------|----------|
+| **torre** (GPU) | up to ~400W | slow (guests → host) | **goes down first**, at `ONBATT + 60s` |
+| **nexus** | ~80W | fast | **stays up**, goes down at `LOWBATT` |
 
-I 60 secondi di tolleranza evitano falsi positivi sui lampi di rete.
+The 60-second grace period avoids reacting to brief mains flickers.
 
 ---
 
 ## 🔌 Hardware checklist
 
-| Componente | Stato | Nota |
-|------------|-------|------|
-| UPS Green Cell PowerProof 2000VA | ✅ | Driver `nutdrv_qx`, protocollo `q1` |
-| nexus (server principale) | ✅ | Collegato a Schuko |
-| torre (Proxmox/GPU) | ✅ | Collegato a Schuko |
-| Switch di rete | ✅ | **Deve** essere sull'UPS |
-| Modem/ONT | ⚠️ opz. | Serve per notifiche ntfy durante blackout |
-| BIOS nexus: "Power On after AC loss" | ✅ | ON |
-| BIOS torre: "Stay Off after AC loss" | ✅ | ON + WoL da S5 |
+| Component | Status | Note |
+|-----------|--------|------|
+| Green Cell PowerProof 2000VA UPS | ✅ | `nutdrv_qx` driver, `q1` protocol |
+| nexus (main server) | ✅ | On the Schuko outlet |
+| torre (Proxmox/GPU) | ✅ | On the Schuko outlet |
+| Network switch | ✅ | **Must** be on the UPS |
+| Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
+| nexus BIOS: "Power On after AC loss" | ✅ | ON |
+| torre BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
 
-> ⚠️ **Senza lo switch sull'UPS**, nexus non può comandare lo spegnimento di torre durante il blackout.
+> ⚠️ **Without the switch on the UPS**, nexus cannot tell torre to shut down during an outage.
 
 ---
 
-## ⚙️ NUT su nexus (primary)
+## ⚙️ NUT on nexus (primary)
 
-### Dipendenze
+### Dependencies
 
 ```bash
 sudo apt install nut libusb-1.0-0-dev
@@ -89,7 +89,7 @@ pollinterval = 2
     default.output.voltage.nominal = 230.0
 ```
 
-> `runtimecal` è calibrata a carichi 4-8% (~50-100W). Con torre accesa (~33% = ~400W) la stima `battery.runtime` è **ottimista e inaffidabile** — la logica di spegnimento si basa sul tempo da `ONBATT`, non sul runtime.
+> `runtimecal` is calibrated at 4–8% load (~50–100W). With torre running (~33% = ~400W) the `battery.runtime` estimate is **optimistic and unreliable** — the shutdown logic keys off time since `ONBATT`, not off runtime.
 
 ### `/etc/nut/nut.conf`
 
@@ -107,14 +107,14 @@ LISTEN 127.0.0.1 3493
 
 ```ini
 [upsmon]
-    password = <PASSWORD_FORTE>
+    password = <STRONG_PASSWORD>
     upsmon master
 ```
 
 ### `/etc/nut/upsmon.conf`
 
 ```ini
-MONITOR nexus-ups@localhost 1 upsmon <PASSWORD_FORTE> master
+MONITOR nexus-ups@localhost 1 upsmon <STRONG_PASSWORD> master
 MINSUPPLIES 1
 POLLFREQ 5
 POLLFREQALERT 5
@@ -125,7 +125,7 @@ NOTIFYFLAG ONLINE  SYSLOG+WALL+EXEC
 NOTIFYFLAG LOWBATT SYSLOG+WALL+EXEC
 ```
 
-> `SHUTDOWNCMD` è gestito da **upsmon** (che si ri-eleva a root), non da upssched.
+> `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
 
 ### `/etc/nut/upssched.conf`
 
@@ -140,7 +140,7 @@ AT ONLINE  * CANCEL-TIMER torre-down
 AT ONLINE  * EXECUTE      notify-online
 ```
 
-### Avvio
+### Startup
 
 ```bash
 sudo systemctl restart nut-server nut-monitor
@@ -151,9 +151,9 @@ sudo upsc nexus-ups@localhost
 
 ## 🔐 SSH nut → torre (forced command)
 
-**Il problema:** `upssched` gira come utente `nut`, non root. Per spegnere torre via SSH, `nut` deve avere una chiave e torre deve accettarla tramite il wrapper `n8n-qm-wrap`.
+**The problem:** `upssched` runs as the `nut` user, not as root. To shut torre down over SSH, `nut` needs a key and torre must accept it through the `n8n-qm-wrap` wrapper.
 
-### Su nexus: genera chiave per `nut`
+### On nexus: generate a key for `nut`
 
 ```bash
 sudo mkdir -p /var/lib/nut/.ssh
@@ -163,9 +163,9 @@ sudo chmod 700 /var/lib/nut/.ssh
 sudo -u nut ssh-keygen -t ed25519 -f /var/lib/nut/.ssh/id_ed25519 -N "" -C "nut@nexus-ups"
 ```
 
-### Su torre: aggiungi il case al wrapper
+### On torre: add the case to the wrapper
 
-Modifica `/usr/local/sbin/n8n-qm-wrap` e inserisci **prima** del `*)`:
+Edit `/usr/local/sbin/n8n-qm-wrap` and insert this **before** the `*)` branch:
 
 ```bash
   "torre-emergency-shutdown"|"torre-emergency-shutdown --dry-run")
@@ -177,45 +177,45 @@ Modifica `/usr/local/sbin/n8n-qm-wrap` e inserisci **prima** del `*)`:
     ;;
 ```
 
-### Su torre: authorized_keys
+### On torre: authorized_keys
 
-Aggiungi in `/root/.ssh/authorized_keys`:
+Add to `/root/.ssh/authorized_keys`:
 
 ```text
 command="/usr/local/sbin/n8n-qm-wrap",no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAAC3NzaC... nut@nexus-ups
 ```
 
-### Verifica
+### Verify
 
 ```bash
 sudo -u nut ssh -o ConnectTimeout=5 -o BatchMode=yes root@10.0.10.10 "torre-emergency-shutdown --dry-run"
 ```
 
-Deve restituire il dry-run **senza** `unauthorized command`.
+It must print the dry-run output **without** `unauthorized command`.
 
 ---
 
-## 🧠 Script di orchestrazione
+## 🧠 Orchestration scripts
 
 ### `kg-ups-handler` (nexus)
 
-Gestisce:
-- `torre-down` → SSH a torre per graceful shutdown
-- `nexus-down` → `compose down` + halt (chiamato da upsmon a LOWBATT)
-- `notify-onbatt` / `notify-online` → notifiche ntfy
+Handles:
+- `torre-down` → SSH to torre for a graceful shutdown
+- `nexus-down` → `compose down` plus halt (called by upsmon at LOWBATT)
+- `notify-onbatt` / `notify-online` → ntfy notifications
 
-> **Nota:** il comando SSH verso torre deve essere **solo il nome** (`torre-emergency-shutdown`), non il path completo — il wrapper `n8n-qm-wrap` fa il matching sui nomi.
+> **Note:** the SSH command sent to torre must be **the bare name** (`torre-emergency-shutdown`), not the full path — the `n8n-qm-wrap` wrapper matches on names.
 
 ### `torre-emergency-shutdown` (torre)
 
-Esegue su Proxmox:
-1. `qm shutdown` di tutti i guest running (graceful, 90s timeout)
-2. `qm stop` forzato per chi è ancora su
-3. `sync` + `shutdown -h now`
+On Proxmox it runs:
+1. `qm shutdown` for every running guest (graceful, 90s timeout)
+2. a forced `qm stop` for anything still up
+3. `sync` followed by `shutdown -h now`
 
 ---
 
-## 🐳 Docker Compose sotto systemd
+## 🐳 Docker Compose under systemd
 
 `/etc/systemd/system/homelab-compose.service`:
 
@@ -242,102 +242,102 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now homelab-compose
 ```
 
-> `RemainAfterExit=yes` fa sì che al boot il `compose up -d` rialzi tutto, e `systemctl stop` esegua il `compose down` pulito chiamato da `kg-ups-handler`.
+> `RemainAfterExit=yes` is what makes `compose up -d` bring everything back at boot, and makes `systemctl stop` run the clean `compose down` that `kg-ups-handler` invokes.
 
 ---
 
 ## 🧪 Test procedure
 
-### 1. Verifica base NUT
+### 1. NUT basics
 
 ```bash
 sudo upsc nexus-ups@localhost
 ```
 
-Atteso: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
+Expected: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
 
-### 2. Verifica SSH nut → torre
+### 2. SSH nut → torre
 
 ```bash
 sudo -u nut ssh root@10.0.10.10 "torre-emergency-shutdown --dry-run"
 ```
 
-### 3. Dry-run
+### 3. Dry run
 
-Su nexus:
+On nexus:
 ```bash
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler torre-down
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler nexus-down
 ```
 
-Su torre:
+On torre:
 ```bash
 KG_UPS_DRYRUN=1 /usr/local/bin/torre-emergency-shutdown --dry-run
 ```
 
-### 4. Evento simulato (FSD)
+### 4. Simulated event (FSD)
 
-⚠️ **Questo spegne davvero.**
+⚠️ **This really does shut things down.**
 
 ```bash
 sudo upsmon -c fsd
 ```
 
-### 5. Prova vera a 60 secondi
+### 5. Real 60-second test
 
-1. Stacca la spina dell'UPS dalla parete (torre accesa).
-2. Aspetta ~60 secondi.
-3. **Torre** deve spegnersi ordinatamente (guest → host halt).
-4. **Nexus** deve restare acceso.
-5. Rattacca la spina prima di `LOWBATT` → `ONLINE` cancella il timer.
+1. Pull the UPS plug from the wall, with torre running.
+2. Wait ~60 seconds.
+3. **torre** must shut down cleanly (guests → host halt).
+4. **nexus** must stay up.
+5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
 
-### 6. Verifica killpower (LOWBATT)
+### 6. Killpower check (LOWBATT)
 
-1. Lascia scaricare fino a `LOWBATT` (o forza con FSD).
-2. Verifica che l'UPS **tagli l'output** (prese spente).
-3. Rattacca la corrente.
-4. Verifica che **nexus si riaccenda da solo**.
+1. Let it drain to `LOWBATT`, or force it with FSD.
+2. Confirm the UPS **cuts its output** (outlets dead).
+3. Restore mains power.
+4. Confirm **nexus powers itself back on**.
 
-> ⚠️ **Se l'UPS non taglia l'output**, nexus resta in stato `halted` e non riparte automaticamente. Serve intervento manuale o una presa smart a monte.
+> ⚠️ **If the UPS does not cut its output**, nexus stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
 
 ---
 
 ## 🚨 Troubleshooting
 
-| Sintomo | Causa | Fix |
+| Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Cannot load USB library` | Manca `libusb-1.0-0-dev` | `sudo apt install libusb-1.0-0-dev` |
-| `Duplicate driver instance` | PID file residuo | `sudo rm -f /run/nut/*.pid` |
-| `upsd disabled` | `MODE` non impostato in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
-| `unauthorized command` su torre | `torre-emergency-shutdown` non whitelistato nel wrapper | Aggiungi il case in `/usr/local/sbin/n8n-qm-wrap` |
-| `Connection failure` | `upsd` non in ascolto | `sudo systemctl start nut-server` |
-| Torre non si spegne | Switch non sull'UPS | Sposta lo switch sotto UPS |
-| Nexus non riparte dopo blackout | BIOS "Power On after AC loss" = OFF | Abilitalo nel BIOS |
-| Container non ripartono al boot | `homelab-compose.service` non enabled | `sudo systemctl enable homelab-compose` |
+| `Cannot load USB library` | `libusb-1.0-0-dev` missing | `sudo apt install libusb-1.0-0-dev` |
+| `Duplicate driver instance` | Stale PID file | `sudo rm -f /run/nut/*.pid` |
+| `upsd disabled` | `MODE` not set in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
+| `unauthorized command` on torre | `torre-emergency-shutdown` not whitelisted in the wrapper | Add the case to `/usr/local/sbin/n8n-qm-wrap` |
+| `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
+| torre does not shut down | Switch not on the UPS | Move the switch onto the UPS |
+| nexus does not restart after an outage | BIOS "Power On after AC loss" = OFF | Enable it in the BIOS |
+| Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
 ---
 
-## 📋 Criterio di uscita
+## 📋 Exit criteria
 
-- [ ] `upsc nexus-ups@localhost` restituisce dati validi (`OL`, carica, tensione).
-- [ ] `nut-server` e `nut-monitor` attivi e senza errori.
-- [ ] Case `torre-emergency-shutdown` in `/usr/local/sbin/n8n-qm-wrap`.
-- [ ] `sudo -u nut ssh root@10.0.10.10 "torre-emergency-shutdown --dry-run"` funziona.
-- [ ] `kg-ups-handler` e `torre-emergency-shutdown` installati; dry-run ok.
-- [ ] `homelab-compose.service` enabled e attivo.
-- [ ] Switch sull'UPS; `torre` in `/etc/hosts`; BIOS nexus = on-after-AC; BIOS torre = stay-off + WoL.
-- [ ] Prova reale a 60s superata: torre giù ordinata, nexus su.
-- [ ] Verifica killpower a LB: nexus riparte da solo (o noto che serve intervento manuale).
-
----
-
-## 📝 Note operative
-
-- **Non fidarti di `battery.runtime`** quando torre è accesa: la calibrazione è a basso carico.
-- **Il lavoro rifiutato non si perde**: la coda di ingest è persistente; `genome-reconcile` ripesca a corrente tornata.
-- **Notifiche sono best-effort**: se il modem non è sull'UPS, il push ntfy non parte durante il blackout — ma lo spegnimento procede comunque.
-- **OPNsense**: non è nel percorso critico (nexus e torre sono sulla stessa /24). Se non è sull'UPS, cade e riparte da solo.
+- [ ] `upsc nexus-ups@localhost` returns sane data (`OL`, charge, voltage).
+- [ ] `nut-server` and `nut-monitor` active and error-free.
+- [ ] `torre-emergency-shutdown` case present in `/usr/local/sbin/n8n-qm-wrap`.
+- [ ] `sudo -u nut ssh root@10.0.10.10 "torre-emergency-shutdown --dry-run"` works.
+- [ ] `kg-ups-handler` and `torre-emergency-shutdown` installed; dry runs pass.
+- [ ] `homelab-compose.service` enabled and active.
+- [ ] Switch on the UPS; `torre` in `/etc/hosts`; nexus BIOS = on-after-AC; torre BIOS = stay-off + WoL.
+- [ ] Real 60-second test passed: torre down cleanly, nexus still up.
+- [ ] Killpower checked at LB: nexus comes back on its own, or it is documented that manual intervention is needed.
 
 ---
 
-*Documento generato per l'homelab nexus/torre — Green Cell PowerProof 2000VA.*
+## 📝 Operational notes
+
+- **Do not trust `battery.runtime`** while torre is running: the calibration is for low load.
+- **Rejected work is not lost**: the ingest queue is persistent, and `genome-reconcile` picks it up once power is back.
+- **Notifications are best-effort**: if the modem is not on the UPS the ntfy push will not go out during an outage — the shutdown still proceeds.
+- **OPNsense** is not in the critical path (nexus and torre share the same /24). If it is not on the UPS it drops and comes back by itself.
+
+---
+
+*Written for the nexus/torre homelab — Green Cell PowerProof 2000VA.*

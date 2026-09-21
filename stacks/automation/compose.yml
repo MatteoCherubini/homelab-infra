@@ -3,6 +3,49 @@
 # Ref: https://docs.n8n.io/2-0-breaking-changes/
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ── Knowledge Genome: the variables the flows read as $env ────────────────────
+#
+# A SHARED ANCHOR, AND NOT AS A MATTER OF STYLE.
+#
+# EXECUTIONS_MODE is `queue`: nodes do not run in `n8n`, they run in
+# `n8n-worker`. The expression {{ $env.X }} is resolved by whichever process
+# executes the node — so a variable set only on `n8n` produces a flow that looks
+# correctly configured in the editor and resolves to an empty string at run
+# time. An `ssh '' 'pi decide …'` that fails a long way from the omission.
+#
+# The two `environment:` blocks below already repeat SYNCTHING_URL, TORRE_MAC and
+# the keys by hand: that is exactly how a variable ends up on one and not the
+# other. With the anchor, that state is not representable.
+x-kg-env: &kg-env
+  # SSH aliases, resolved in n8n-runner's ~/.ssh/config ON THIS HOST — not names
+  # n8n resolves itself: the path is two hops, n8n → n8n-runner@this-host →
+  # ssh $KG_AI_HOST.
+  KG_AI_HOST: ${KG_AI_HOST}
+  KG_HYPERVISOR_HOST: ${KG_HYPERVISOR_HOST}
+  # Unix account owning the genome vaults, reached with sudo -u by the watcher.
+  KG_SERVICE_USER: ${KG_SERVICE_USER}
+  # CONTAINER ADDRESS, not the public hostname. `forgejo` is in
+  # N8N_SSRF_ALLOWED_HOSTNAMES and the public hostname is not; and this way the
+  # call never leaves the machine, so it keeps working with the tunnel down.
+  FORGEJO_URL: ${FORGEJO_URL}
+  # The address a PERSON reaches — never the same value as FORGEJO_URL above.
+  # Notifications build their tap target from this; unset, they emit no link
+  # and name the key in the message instead.
+  FORGEJO_WEB_BASE: ${FORGEJO_WEB_BASE}
+  KG_NTFY_URL: ${KG_NTFY_URL}
+  KG_NTFY_TOPIC: ${KG_NTFY_TOPIC}
+  # AUTHORISATION list: who may start a phase by merging.
+  # Empty means nobody — it fails closed on purpose.
+  KG_ALLOWED_SENDERS: ${KG_ALLOWED_SENDERS}
+  # NO KG_*_WEBHOOK_PATH HERE, deliberately. A Webhook node's `path` is
+  # registered when the workflow is ACTIVATED, before any execution context
+  # exists, so it cannot be an expression and n8n cannot read it from this
+  # environment: the value is typed into the node by hand on import. These three
+  # were passed in for a year, read by nothing, and a rotation was carried out
+  # against them while the nodes went on listening on their old paths.
+  # The janitor already has a fallback (`|| 15`), so this is a preference.
+  KG_IDLE_MINUTES: ${KG_IDLE_MINUTES:-30}
+
 services:
   n8n-db:
     image: ${N8N_DB_IMAGE}:${N8N_DB_VERSION}
@@ -52,6 +95,8 @@ services:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
       - n8n_known_hosts:/home/node/.ssh
     environment:
+      # ── Knowledge Genome ──────────────────────────────────────────────────
+      <<: *kg-env
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb
@@ -100,6 +145,10 @@ services:
     volumes:
       - ${DATA_ROOT}/n8n/data:/home/node/.n8n
     environment:
+      # ── Knowledge Genome ──────────────────────────────────────────────────
+      # Same anchor as the `n8n` service, and it matters more here: in queue
+      # mode THIS is the process that executes nodes and resolves the $env.
+      <<: *kg-env
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb

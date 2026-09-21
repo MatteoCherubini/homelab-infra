@@ -1,0 +1,49 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  Local stacks — copy to docker-compose.override.yml          ║
+# ╚══════════════════════════════════════════════════════════════╝
+#
+# Docker Compose automatically reads `docker-compose.override.yml` next to the
+# main file and merges it in. The real file is gitignored: it exists to run
+# services on ONE machine that do not belong to this repository — a separate
+# project, or something you are only trying out.
+#
+# WHY NOT A BRANCH
+#
+# Keeping a local service on a dedicated branch looks convenient and has an
+# unpleasant side effect: switch back to another branch and the service keeps
+# running, but no file declares it any more. Docker then treats it as an
+# "orphan" container of the project, and `make up` — which passes
+# `--remove-orphans` — deletes it without asking.
+#
+# This has already happened on this infrastructure: a container stayed up for
+# weeks with its mounted directories by then empty and the compose file that
+# defined it gone from disk, so it could no longer be recreated.
+#
+# A gitignored override does not have that problem: the service stays declared
+# on this machine whichever branch is checked out.
+#
+# NOTES
+#
+# - Paths inside an included file resolve relative to THAT file's directory,
+#   not to the repository root: a `build: context: .` in
+#   /path/my-service/compose.yml builds from /path/my-service.
+# - Put it somewhere the user running the stack can write: /opt belongs to root
+#   on a standard Ubuntu install.
+# - The `homelab` network is defined in docker-compose.yml and inherited
+#   through the merge; included files must not redeclare it, or the include
+#   conflicts.
+# - Variables the local service needs go in this machine's .env.
+#   `make check-env` will report them as extra compared to .env.example: that
+#   is expected and correct — they are not repository configuration.
+
+# A project living in its own repository, outside this tree:
+include:
+  - /path/to/separate-project/compose.yml
+
+# Or a service declared directly here:
+# services:
+#   something-im-trying:
+#     image: some/image:1.2.3
+#     restart: unless-stopped
+#     networks:
+#       - homelab
