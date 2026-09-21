@@ -58,6 +58,21 @@ HTTP_HEADERS = {
 
 UNSTABLE_KEYWORDS = ("alpha", "beta", "rc", "test", "dev", "nightly", "preview")
 
+# Le keyword vanno cercate come MARCATORE di versione, non come sottostringa.
+# Un `"rc" in titolo` colpisce "architecture", "source", "search" e "force";
+# "dev" colpisce "device" e "developer"; "test" colpisce "latest" e "greatest".
+# Su una forge che intitola i rilasci con una frase anziché con il solo numero,
+# quel match faceva sparire release valide — e il checker non segnalava un
+# errore, diceva "nessun aggiornamento".
+#
+# Qui la keyword deve iniziare dove non c'è una lettera (inizio stringa, `-`,
+# `.`, spazio, o una cifra come in "1.0.0rc1") e non deve proseguire in altre
+# lettere: "-rc.1" e "1.0.0rc1" sì, "architecture" e "device" no.
+UNSTABLE_RE = re.compile(
+    r"(?:^|[^a-z])(?:" + "|".join(UNSTABLE_KEYWORDS) + r")(?![a-z])",
+    re.IGNORECASE,
+)
+
 # ── Forge API registry ────────────────────────────────────────────────────────
 # Ogni forge ha: host da matchare, template URL per l'API releases,
 # headers specifici, e parametri query per la paginazione.
@@ -431,8 +446,14 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
 
 
 def is_stable_release(title: str) -> bool:
-    """True se il titolo della release non contiene keyword di pre-release."""
-    return not any(kw in title.lower() for kw in UNSTABLE_KEYWORDS)
+    """
+    True se il titolo non porta un marcatore di pre-release.
+
+    È un'euristica di supporto: la difesa primaria resta il campo booleano
+    `prerelease` dell'API, che `get_latest_from_forge_api` controlla per
+    primo. Serve per i feed RSS, dove quel campo non esiste.
+    """
+    return not UNSTABLE_RE.search(title or "")
 
 
 def get_latest_from_rss(url: str, current_version: str = "") -> str:

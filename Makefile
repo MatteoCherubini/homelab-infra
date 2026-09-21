@@ -1,5 +1,5 @@
 ## Version 0.4.5
-.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck check-updates
+.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates
 
 SHELL := /bin/bash
 
@@ -57,6 +57,9 @@ check-env: ## Verifica che .env sia allineato a .env.example
 gpu-check: ## Verifica presenza GPU NVIDIA
 	@nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
 		&& echo "GPU_OK" || echo "GPU_MISSING"
+
+test: ## Suite offline: lint, sintassi, JSON/YAML, segreti, test unitari
+	@./scripts/run-tests.sh
 
 healthcheck: ## Verifica end-to-end: endpoint di salute + impronta dati (pre/post update)
 	@./scripts/healthcheck.sh $(SERVICE)
