@@ -12,8 +12,9 @@
 #   ./scripts/healthcheck.sh              # everything
 #   ./scripts/healthcheck.sh n8n forgejo  # selected services only
 #
-# Exits 0 when every check passes, 1 otherwise, so an upgrade script can use
-# it as a rollback condition.
+# Every check runs before anything is reported — a comparison is only useful
+# whole — and the exit code is 0 when they all passed, 1 otherwise, so an
+# upgrade script can use it as a rollback condition.
 
 set -uo pipefail
 

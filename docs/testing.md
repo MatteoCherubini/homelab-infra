@@ -65,7 +65,10 @@ workflows, credentials, migrations applied. Comparing that fingerprint on both
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
 
-It exits non-zero on the first failure, so it can gate a rollback.
+It runs every check before reporting, rather than stopping at the first
+failure — when you are comparing before and after an upgrade, the full picture
+is the point — and exits non-zero if any of them failed, so it can gate a
+rollback.
 
 ```bash
 make healthcheck              # everything
