@@ -1,4 +1,5 @@
-# -- GIT: Forgejo --
+# ── GIT: Forgejo ──
+# Domain caveats and upgrade notes: docs/stacks/git.md
 services:
   forgejo:
     image: ${FORGEJO_IMAGE}:${FORGEJO_VERSION}
