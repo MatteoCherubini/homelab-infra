@@ -1,5 +1,5 @@
 ## Version 0.4.5
-.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health check-updates
+.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck check-updates
 
 SHELL := /bin/bash
 
@@ -57,6 +57,9 @@ check-env: ## Verifica che .env sia allineato a .env.example
 gpu-check: ## Verifica presenza GPU NVIDIA
 	@nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
 		&& echo "GPU_OK" || echo "GPU_MISSING"
+
+healthcheck: ## Verifica end-to-end: endpoint di salute + impronta dati (pre/post update)
+	@./scripts/healthcheck.sh $(SERVICE)
 
 health: ## Mostra solo i container non sani
 	@docker compose ps --format "table {{.Name}}\t{{.Status}}" \
