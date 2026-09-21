@@ -102,12 +102,26 @@ it. That is not hypothetical: a container here ran for three weeks with its
 bind mounts empty and the compose file that defined it gone from disk, so it
 could no longer be recreated.
 
-Two things that catch people out:
+Three things that catch people out:
 
 - Paths inside an included file resolve relative to **that file's** directory,
   not the repository root.
 - The `homelab` network is declared once in `docker-compose.yml` and inherited
   through the merge. An included file must not redeclare it.
+- **Every user who runs a compose command here must be able to read the
+  included file**, and that includes automation accounts. An include pointing
+  into a home directory broke the scheduled update checker on this host:
+  `/home/<user>` is mode 750, the automation runs as a different account, and
+  `docker compose config` failed with `permission denied` — taking the entire
+  manifest down rather than one service.
+
+That last one marks the boundary of what an override is for. A project with
+its own repository and its own lifecycle belongs in its own compose project,
+attaching to this stack's network as `external`. Orphan detection is
+per-project, so `--remove-orphans` here has no claim on it, and nothing has to
+read across a directory boundary. The override is for the smaller case: a
+compose file that belongs to this machine and is simply kept out of the
+repository.
 
 Variables the local service needs go in that machine's `.env`. `make check-env`
 reports them as extra compared to `.env.example` — expected and correct, since
