@@ -1,27 +1,32 @@
-# UPS stack
+# UPS orchestration
 
 Ordered shutdown, workstation → server, on mains failure, with automatic
-recovery. Built on **NUT** (Network UPS Tools), **systemd**, an **SSH forced
-command** and **Docker Compose**.
+recovery. Built on **NUT** (Network UPS Tools), **systemd** and an **SSH
+forced command**.
 
-This subsystem spans two layers, which is why its pieces live in two places:
+**This runs on the host, not in Compose, and that is not a temporary state.**
 
-| Layer | What | Where |
-|-------|------|-------|
-| Host | The event handler NUT invokes, installed to `/usr/local/bin` | `host/kg-ups-handler` |
-| Host | NUT configuration, systemd units, the SSH forced command | Not in the repository — created from this runbook |
-| Container | `nut-upsd`, the NUT server as a container | `stacks/ups/compose.yml` |
+`upsmon` has to halt the machine it is monitoring. A container cannot halt its
+own host, so the shutdown half of this design can only live outside Docker.
+What Compose contributes is the other direction: `homelab-compose.service`
+gives the handler a clean way to bring the stacks down before the halt, and to
+bring them back up at boot.
 
-> **Status: not currently enabled.** The include line for `stacks/ups` is
-> commented out in `docker-compose.yml`, pending the physical install. The
-> host-side design below is complete and tested; uncomment the include once the
-> UPS is wired up.
+| Piece | Where |
+|-------|-------|
+| The event handler NUT invokes, installed to `/usr/local/bin` | `host/kg-ups-handler` |
+| NUT configuration, systemd units, the SSH forced command | On the host — created from this runbook, not tracked here |
+| The ntfy token the handler uses | `/etc/nut/kg-ups.env`, mode 0600, owned by root |
 
-The two layers are alternatives, not complements: either NUT runs on the host
-(the arrangement this runbook describes, and the one that works, because
-`upsmon` must halt the host itself) or it runs in the container. The container
-stack is kept for the case where only monitoring is wanted, without the
-shutdown orchestration.
+Only the handler is version-controlled. The rest is host configuration that
+this document describes well enough to rebuild.
+
+> **There was once a `stacks/ups/compose.yml`** running `nut-upsd` in a
+> container, left behind a commented-out include. It was removed, because
+> enabling it on this host would have conflicted three ways: the host `upsd`
+> already holds port 3493, the host `nutdrv_qx` already holds the UPS over USB,
+> and the container still could not perform the halt that is the entire point.
+> It was an alternative that was tried and rejected, not a pending step.
 
 ---
 
@@ -346,19 +351,32 @@ sudo upsmon -c fsd
 
 ---
 
-## 📋 Exit criteria
+## 📋 State of the installation
 
-- [ ] `upsc nexus-ups@localhost` returns sane data (`OL`, charge, voltage).
-- [ ] `nut-server` and `nut-monitor` active and error-free.
-- [ ] `torre-emergency-shutdown` case present in `/usr/local/sbin/n8n-qm-wrap`.
-- [ ] `sudo -u nut ssh root@10.0.10.10 "torre-emergency-shutdown --dry-run"` works.
-- [ ] `kg-ups-handler` and `torre-emergency-shutdown` installed; dry runs pass.
-- [ ] `homelab-compose.service` enabled and active.
-- [ ] Switch on the UPS; `torre` in `/etc/hosts`; nexus BIOS = on-after-AC; torre BIOS = stay-off + WoL.
-- [ ] Real 60-second test passed: torre down cleanly, nexus still up.
-- [ ] Killpower checked at LB: nexus comes back on its own, or it is documented that manual intervention is needed.
+Verified on the server on 2026-09-21:
 
----
+- [x] `upsc nexus-ups@localhost` returns sane data — `ups.status: OL`,
+      battery 100%, input 225.2V
+- [x] `nut-server` and `nut-monitor` enabled and active
+- [x] `kg-ups-handler` installed at `/usr/local/bin`, owned by root
+- [x] `/etc/nut/` holds the full configuration, including `kg-ups.env`
+- [x] `homelab-compose.service` enabled, so the stacks come back at boot
+- [x] The workstation is reachable from the server
+
+Not verified from here, and worth re-checking before relying on it:
+
+- [ ] The `torre-emergency-shutdown` case is present in
+      `/usr/local/sbin/n8n-qm-wrap` on the workstation
+- [ ] `sudo -u nut ssh root@<workstation> "torre-emergency-shutdown --dry-run"`
+      still succeeds — the forced command is the part that silently rots, because
+      nothing exercises it until a real outage does
+- [ ] A real 60-second test: workstation down cleanly, server still up
+- [ ] Killpower at LOWBATT: the UPS cuts its output and the server powers back
+      on by itself
+
+The second one deserves a periodic check. Everything else in this design fails
+loudly; an SSH forced command that stopped matching fails at precisely the
+moment it is needed and never before.
 
 ## 📝 Operational notes
 

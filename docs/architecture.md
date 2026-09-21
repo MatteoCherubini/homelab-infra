@@ -1,8 +1,8 @@
 # Architecture
 
 A single Ubuntu Server host running thirteen services in six Docker Compose
-stacks, plus a seventh stack for UPS orchestration that is written and left
-disabled.
+stacks, plus a UPS subsystem that deliberately runs on the host rather than in
+a container.
 
 ---
 
@@ -20,7 +20,6 @@ include:
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
-  # - stacks/ups/compose.yml    # Enable once the UPS is physically installed
 ```
 
 Disabling a stack is commenting out one line. Stacks are grouped by
@@ -35,7 +34,6 @@ the others.
 | `git` | forgejo | [git](stacks/git.md) |
 | `security` | vaultwarden | [security](stacks/security.md) |
 | `tools` | excalidraw | [tools](stacks/tools.md) |
-| `ups` | nut-upsd (disabled) | [ups](stacks/ups.md) |
 
 Because the network is declared at the root and inherited through the merge,
 included files must not redeclare it.
