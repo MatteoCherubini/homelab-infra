@@ -63,8 +63,8 @@ ssh_hypervisor() {
 case "${1:-}" in
 
   hypervisor-down)
-    notify "Blackout — hypervisor in spegnimento" \
-           "Corrente assente da >60s. Hypervisor si spegne ora; server resta su a batteria." \
+    notify "Power cut — shutting hypervisor down" \
+           "Mains down for >60s. hypervisor is shutting down now; server stays up on battery." \
            "urgent" "electric_plug"
     log "on battery -> emergency shutdown of hypervisor"
     if ssh_hypervisor hypervisor-emergency-shutdown; then
@@ -75,8 +75,8 @@ case "${1:-}" in
     ;;
 
   server-down)
-    notify "Batteria scarica — server in spegnimento" \
-           "LOWBATT raggiunto. Compose down, poi halt. Tutto riparte da solo con la corrente." \
+    notify "Battery low — shutting server down" \
+           "LOWBATT reached. Compose down, then halt. Everything comes back by itself on mains restore." \
            "urgent" "battery"
     log "low battery -> stopping stacks and powering off server"
     if systemctl list-unit-files 2>/dev/null | grep -q "^${COMPOSE_UNIT}"; then
@@ -90,14 +90,14 @@ case "${1:-}" in
     ;;
 
   notify-onbatt)
-    notify "Blackout — passaggio a batteria" \
-           "Corrente assente. Hypervisor si spegne tra ~60s; server resta su a batteria." \
+    notify "Power cut — running on battery" \
+           "Mains down. hypervisor shuts down in ~60s; server stays up on battery." \
            "urgent" "electric_plug"
     ;;
 
   notify-online)
-    notify "Corrente ripristinata" \
-           "Alimentazione tornata. Hypervisor riparte da sola al prossimo ingest (WoL)." \
+    notify "Mains restored" \
+           "Power is back. hypervisor wakes itself on the next ingest (WoL)." \
            "default" "white_check_mark"
     ;;
 

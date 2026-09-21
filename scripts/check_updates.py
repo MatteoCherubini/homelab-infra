@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
 check_updates.py — SSoT manifest generator + RSS update checker
-Unifica generate_manifest.py e update_checker.py in un singolo script.
+Merges generate_manifest.py and update_checker.py into a single script.
 
-Output stdout: JSON strutturato per n8n
-Output stderr: warning operativi (servizi non censiti, ecc.)
-Exit code: sempre 0 (n8n non va in crash)
+stdout: structured JSON for n8n
+stderr: operational warnings (services missing from the metadata, etc.)
+Exit code: always 0, so n8n never sees a crash
 
-Struttura output:
+Output shape:
 {
-  "manifest":             [...],  # Tutti i servizi — per l'upsert Postgres
-  "updates":              [...],  # Servizi tracciati con nuove versioni disponibili
-  "errors":               [...],  # Servizi tracciati con errori RSS/rete
-  "unchanged":            [...],  # Servizi tracciati senza novità
-  "untracked_warnings":   [...],  # Nomi servizi non censiti in services_metadata.json
-  "run_at":               "...",  # Timestamp ISO 8601 dell'esecuzione
-  "summary":              {...}   # Contatori aggregati per n8n routing
+  "manifest":             [...],  # Every service — for the Postgres upsert
+  "updates":              [...],  # Tracked services with a newer version available
+  "errors":               [...],  # Tracked services that hit an RSS/network error
+  "unchanged":            [...],  # Tracked services with nothing new
+  "untracked_warnings":   [...],  # Services absent from services_metadata.json
+  "run_at":               "...",  # ISO 8601 timestamp of this run
+  "summary":              {...}   # Aggregate counters, used for routing in n8n
 }
 """
 
@@ -33,7 +33,7 @@ try:
     import requests
 except ImportError:
     print(json.dumps({
-        "fatal": "Libreria 'requests' non installata. Esegui: pip install requests",
+        "fatal": "The 'requests' library is not installed. Run: pip install requests",
         "manifest": [], "updates": [], "errors": [],
         "unchanged": [], "untracked_warnings": [],
         "run_at": datetime.now(timezone.utc).isoformat(),
@@ -42,14 +42,14 @@ except ImportError:
     sys.exit(0)
 
 
-# ── Configurazione ────────────────────────────────────────────────────────────
+# ── Configuration ─────────────────────────────────────────────────────────────
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR    = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 METADATA_PATH = os.path.join(BASE_DIR, "services_metadata.json")
 
-TIMEOUT     = 10    # secondi per ogni richiesta HTTP
-THROTTLE    = 1.5   # secondi tra una richiesta RSS e la successiva (GitHub rate limit)
+TIMEOUT     = 10    # seconds per HTTP request
+THROTTLE    = 1.5   # seconds between RSS requests (GitHub rate limit)
 
 HTTP_HEADERS = {
     "User-Agent": "Homelab-Update-Checker/1.0",
@@ -58,11 +58,26 @@ HTTP_HEADERS = {
 
 UNSTABLE_KEYWORDS = ("alpha", "beta", "rc", "test", "dev", "nightly", "preview")
 
+# The keywords must be matched as version MARKERS, not as substrings.
+# A plain `"rc" in title` hits "architecture", "source", "search" and "force";
+# "dev" hits "device" and "developer"; "test" hits "latest" and "greatest".
+# On a forge that titles releases with a sentence rather than a bare number,
+# that match made valid releases disappear — and the checker did not report an
+# error, it reported "no updates".
+#
+# Here a keyword must start where there is no letter (start of string, `-`,
+# `.`, a space, or a digit as in "1.0.0rc1") and must not continue into more
+# letters: "-rc.1" and "1.0.0rc1" match, "architecture" and "device" do not.
+UNSTABLE_RE = re.compile(
+    r"(?:^|[^a-z])(?:" + "|".join(UNSTABLE_KEYWORDS) + r")(?![a-z])",
+    re.IGNORECASE,
+)
+
 # ── Forge API registry ────────────────────────────────────────────────────────
-# Ogni forge ha: host da matchare, template URL per l'API releases,
-# headers specifici, e parametri query per la paginazione.
-# L'ordine conta: il primo match vince.
-# Per istanze Gitea/Forgejo non in lista, c'è il GITEA_FALLBACK automatico.
+# Each forge has: a host to match, a URL template for the releases API, its
+# own headers, and query parameters for pagination.
+# Order matters: the first match wins.
+# Gitea/Forgejo instances not listed here fall back to GITEA_FALLBACK.
 
 FORGE_REGISTRY = [
     {
@@ -82,7 +97,7 @@ FORGE_REGISTRY = [
         "params":  {"limit": 30},
         "timeout": 30,
     },
-    # Aggiungere qui altre istanze Gitea/Forgejo/GitLab se necessario:
+    # Add further Gitea/Forgejo/GitLab instances here as needed:
     # {
     #     "host":    "gitea.example.com",
     #     "api_tpl": "https://gitea.example.com/api/v1/repos/{owner}/{repo}/releases",
@@ -91,23 +106,23 @@ FORGE_REGISTRY = [
     # },
 ]
 
-# Fallback generico per qualsiasi istanza Gitea/Forgejo non nel registry
+# Generic fallback for any Gitea/Forgejo instance absent from the registry
 GITEA_FALLBACK = {
     "api_tpl": "{scheme}://{netloc}/api/v1/repos/{owner}/{repo}/releases",
     "headers": {"Accept": "application/json"},
     "params":  {"limit": 30},
 }
 
-# Regex per estrarre Major.Minor.Patch da qualsiasi stringa di versione
+# Extracts Major.Minor.Patch from any version string
 SEMVER_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
 
 # ── I/O helpers ───────────────────────────────────────────────────────────────
 
 def load_metadata() -> dict:
-    """Carica services_metadata.json. Ritorna {} se il file manca."""
+    """Load services_metadata.json. Returns {} when the file is absent."""
     if not os.path.exists(METADATA_PATH):
-        print(f"⚠️  File metadati mancante: {METADATA_PATH}", file=sys.stderr)
+        print(f"⚠️  Metadata file missing: {METADATA_PATH}", file=sys.stderr)
         return {}
     with open(METADATA_PATH, encoding="utf-8") as f:
         return json.load(f)
@@ -115,8 +130,8 @@ def load_metadata() -> dict:
 
 def run_compose_config() -> dict:
     """
-    Esegue 'docker compose config --format json'.
-    Ritorna il dizionario dei servizi.
+    Runs 'docker compose config --format json'.
+    Returns the services dictionary.
     """
     result = subprocess.run(
         ["docker", "compose", "config", "--format", "json"],
@@ -132,10 +147,10 @@ def run_compose_config() -> dict:
 
 def parse_image(full_image: str) -> tuple:
     """
-    Separa immagine e tag dall'ultimo ':'.
-    Ritorna (image_name, raw_version, clean_version).
+    Splits image and tag on the last ':'.
+    Returns (image_name, raw_version, clean_version).
 
-    Esempi:
+    Examples:
       "nextcloud:33.0.2-apache"  → ("nextcloud", "33.0.2-apache", "33.0.2")
       "postgres:16-alpine"       → ("postgres", "16-alpine", "16")
       "immich-server:v2.7.5-cuda"→ ("immich-server", "v2.7.5-cuda", "v2.7.5")
@@ -147,9 +162,9 @@ def parse_image(full_image: str) -> tuple:
         image_name   = full_image
         raw_version  = "latest"
 
-    # Rimuove suffissi build solo se contengono lettere
+    # Strip build suffixes only when they contain letters
     # "33.0.2-apache" → "33.0.2"  |  "16-alpine" → "16"
-    # "9-alpine"      → "9"        |  "2025.01.20" → "2025.01.20" (nessun suffisso)
+    # "9-alpine"      → "9"        |  "2025.01.20" → "2025.01.20" (no suffix)
     parts  = raw_version.split("-")
     suffix = "-".join(parts[1:])
     clean_version = parts[0] if (len(parts) > 1 and any(c.isalpha() for c in suffix)) \
@@ -160,11 +175,11 @@ def parse_image(full_image: str) -> tuple:
 
 def extract_semver(version_str: str) -> tuple:
     """
-    Estrae (major, minor, patch) da una stringa di versione.
-    Ritorna (0, 0, 0) se la stringa non contiene numeri validi.
+    Extracts (major, minor, patch) from a version string.
+    Returns (0, 0, 0) when the string holds no usable numbers.
 
-    Gestisce:
-      "10"        → (10, 0, 0)   # tag Docker a singolo numero
+    Handles:
+      "10"        → (10, 0, 0)   # single-number Docker tag
       "v15.0.3"   → (15, 0, 3)
       "2.15.0"    → (2, 15, 0)
     """
@@ -177,7 +192,7 @@ def extract_semver(version_str: str) -> tuple:
             int(m.group(2)),
             int(m.group(3)) if m.group(3) else 0
         )
-    # Fallback: versione a singolo numero (es. tag Docker "10", "8")
+    # Fallback: single-number version (e.g. Docker tags "10", "8")
     single = re.match(r"v?(\d+)$", version_str.strip())
     if single:
         return (int(single.group(1)), 0, 0)
@@ -186,8 +201,8 @@ def extract_semver(version_str: str) -> tuple:
 
 def determine_bump(current: tuple, latest: tuple) -> tuple:
     """
-    Confronta due tuple semver.
-    Ritorna (bump_type, is_major_bump).
+    Compares two semver tuples.
+    Returns (bump_type, is_major_bump).
     bump_type: "major" | "minor" | "patch" | "none" | "unknown"
     """
     if current == (0, 0, 0) or latest == (0, 0, 0):
@@ -209,8 +224,8 @@ def determine_bump(current: tuple, latest: tuple) -> tuple:
 
 def discover_dependencies(services: dict) -> set:
     """
-    Scansiona i blocchi depends_on di tutti i servizi e ritorna
-    un set con i nomi di tutte le dipendenze dichiarate.
+    Scans every service's depends_on block and returns the set of names
+    declared as dependencies.
     """
     deps = set()
     for s_data in services.values():
@@ -224,10 +239,10 @@ def discover_dependencies(services: dict) -> set:
 
 def build_manifest(services: dict, metadata_map: dict) -> tuple:
     """
-    Costruisce il manifest completo di tutti i servizi Docker.
-    Ritorna (manifest: list, untracked_warnings: list).
+    Builds the full manifest of every Docker service.
+    Returns (manifest: list, untracked_warnings: list).
 
-    Ogni item del manifest ha questa struttura:
+    Each manifest entry has this shape:
     {
       compose_name, service_name, display_name,
       image_name, raw_version, current_version, full_image,
@@ -259,14 +274,14 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
         meta = metadata_map.get(s_name)
 
         if meta:
-            # ── Servizio censito in services_metadata.json ──────────────────
+            # ── Service present in services_metadata.json ───────────────────
             stack_name  = meta.get("stack", "unknown")
             criticality = meta.get("criticality", "low")
 
             display_name = meta.get("display_name") or s_name.replace("-", " ").title()
 
             if meta.get("repo"):
-                # Servizio GitHub standard
+                # Standard GitHub-hosted service
                 owner, repo_name = meta["repo"].split("/", 1)
                 item.update({
                     "github_owner":     owner,
@@ -279,8 +294,8 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
                     "is_tracked":       True,
                 })
             else:
-                # Non-GitHub con RSS diretto (Forgejo, Gitea, ecc.)
-                # Se manca anche rss_url, è censito ma non tracciabile
+                # Non-GitHub with a direct RSS feed (Forgejo, Gitea, ...)
+                # Without rss_url it is known but cannot be tracked
                 has_rss = bool(meta.get("rss_url"))
                 item.update({
                     "github_owner":     meta.get("github_owner"),
@@ -307,12 +322,12 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
             })
 
         else:
-            # ── Servizio sconosciuto: non censito e non dipendenza ───────────
-            # Probabilmente manca una riga in services_metadata.json
+            # ── Unknown service: not in the metadata and not a dependency ───
+            # Most likely a missing entry in services_metadata.json
             untracked_warnings.append(s_name)
             print(
-                f"⚠️  Warning: '{s_name}' non è censito in services_metadata.json "
-                f"e non compare in nessun depends_on. Aggiungilo al file metadati.",
+                f"⚠️  Warning: '{s_name}' is absent from services_metadata.json "
+                f"and appears in no depends_on. Add it to the metadata file.",
                 file=sys.stderr
             )
             item.update({
@@ -335,8 +350,8 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
 
 def _resolve_forge(repo_url: str) -> dict:
     """
-    Dato un URL repository, ritorna il pattern API da usare.
-    Cerca nel FORGE_REGISTRY per host esatto; se non trova, costruisce
+    Given a repository URL, returns the API pattern to use.
+    Looks up FORGE_REGISTRY by exact host; failing that, it builds
     un endpoint Gitea/Forgejo generico dal dominio (fallback universale).
     """
     parsed = urlparse(repo_url)
@@ -361,15 +376,15 @@ def _resolve_forge(repo_url: str) -> dict:
 def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
                                current_version: str = "") -> dict:
     """
-    Rileva il tipo di forge dall'URL e interroga l'API releases appropriata.
-    Supporta GitHub, Gitea/Forgejo (Codeberg), e qualsiasi forge con API
-    Gitea-compatibile. Il registry è estensibile senza toccare il codice.
+    Detects the forge from the URL and queries its releases API.
+    Supports GitHub, Gitea/Forgejo (Codeberg), and any forge with a
+    Gitea-compatible API. The registry is extensible without touching code.
 
-    Ritorna un dict:
+    Returns a dict:
       {"version": "...", "is_prerelease": False, "release_label": "stable",
        "forge": "github.com"|"codeberg.org"|...}
 
-    Lancia eccezione se non trova release stabili o se la rete fallisce.
+    Raises if no stable release is found or the network fails.
     """
     forge  = _resolve_forge(repo_url)
     url    = forge["api_tpl"].format(owner=owner, repo=repo)
@@ -382,7 +397,7 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
 
     releases = resp.json()
     if not isinstance(releases, list):
-        raise ValueError(f"Risposta API inattesa da {forge['host']} per {owner}/{repo}")
+        raise ValueError(f"Unexpected API response from {forge['host']} for {owner}/{repo}")
 
     current_semver = extract_semver(current_version)
     current_major  = current_semver[0] if current_semver != (0, 0, 0) else None
@@ -397,7 +412,7 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
         tag  = rel.get("tag_name", "")
         pre  = rel.get("prerelease", False)
 
-        # Doppio filtro: campo strutturato 'prerelease' + keyword nel titolo/tag
+        # Two filters: the structured 'prerelease' field, plus title/tag keywords
         name = rel.get("name", "") or tag
         if pre or not is_stable_release(name) or not is_stable_release(tag):
             continue
@@ -409,10 +424,17 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
             if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
                 same_branch_stable.append(tag)
 
-    chosen = (same_branch_stable or any_stable or [None])[0]
+    # The HIGHEST release, not the first one the API returns.
+    # Forges order /releases by tag creation date, which for two releases
+    # published on the same day can invert version order: on 2026-09-21 GitHub
+    # listed n8n 2.39.9 before 2.39.10, and taking element [0] proposed a
+    # version that had already been superseded. Sorting by semver makes the
+    # choice deterministic and independent of the forge.
+    candidates = same_branch_stable or any_stable
+    chosen = max(candidates, key=extract_semver) if candidates else None
     if chosen is None:
         raise ValueError(
-            f"Nessuna release stabile trovata via {forge['host']} API per {owner}/{repo}"
+            f"No stable release found via the {forge['host']} API for {owner}/{repo}"
         )
 
     return {
@@ -424,21 +446,27 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
 
 
 def is_stable_release(title: str) -> bool:
-    """True se il titolo della release non contiene keyword di pre-release."""
-    return not any(kw in title.lower() for kw in UNSTABLE_KEYWORDS)
+    """
+    True when the title carries no pre-release marker.
+
+    This is a supporting heuristic: the primary defence remains the API's
+    boolean `prerelease` field, which `get_latest_from_forge_api` checks
+    first. This matters for RSS feeds, where that field does not exist.
+    """
+    return not UNSTABLE_RE.search(title or "")
 
 
 def get_latest_from_rss(url: str, current_version: str = "") -> str:
     """
-    Scarica il feed Atom/RSS e ritorna il titolo della prima release stabile.
-    Se current_version è fornita, cerca una release con lo stesso major version
-    PRIMA di accettare qualsiasi release (multi-branch: es. n8n v1/v2).
-    Lancia eccezione se non trova nulla o se la rete fallisce.
+    Fetches the Atom/RSS feed and returns the highest stable release title.
+    When current_version is given, a release on the same major is preferred
+    BEFORE accepting any release at all (multi-branch forges, e.g. n8n v1/v2).
+    Raises if nothing is found or the network fails.
     """
     resp = requests.get(url, timeout=TIMEOUT, headers=HTTP_HEADERS)
     resp.raise_for_status()
 
-    # Rimuove il namespace XML default per semplificare le query ElementTree
+    # Drop the default XML namespace to keep the ElementTree queries simple
     xml_clean = re.sub(r'\sxmlns="[^"]+"', "", resp.text, count=1)
     root = ET.fromstring(xml_clean)
 
@@ -457,28 +485,29 @@ def get_latest_from_rss(url: str, current_version: str = "") -> str:
 
             any_stable.append(title)
 
-            # Se conosciamo il major attuale, filtriamo per branch
+            # When the current major is known, filter by branch
             if current_major is not None:
                 entry_semver = extract_semver(title)
                 if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
                     same_branch.append(title)
 
-    # Priorità: stessa branch > qualsiasi release stabile
-    if same_branch:
-        return same_branch[0]
-    if any_stable:
-        return any_stable[0]
+    # Preference: same branch > any stable release.
+    # As on the API path, take the highest semver rather than the feed's first
+    # entry: the order of an Atom feed reflects dates, not versions.
+    candidates = same_branch or any_stable
+    if candidates:
+        return max(candidates, key=extract_semver)
 
-    raise ValueError("Nessuna release stabile trovata nel feed")
+    raise ValueError("No stable release found in the feed")
 
 
 def check_updates(tracked_services: list) -> tuple:
     """
-    Controlla le release per i servizi tracciati (is_tracked=True e rss_url valorizzato).
-    Usa l'API del forge (GitHub, Codeberg, Gitea...) come prima scelta, con fallback RSS.
-    Ritorna (updates, errors, unchanged).
+    Checks releases for tracked services (is_tracked=True and rss_url set).
+    Prefers the forge API (GitHub, Codeberg, Gitea...), falling back to RSS.
+    Returns (updates, errors, unchanged).
 
-    Ogni item viene arricchito con:
+    Each entry is enriched with:
       latest_version, bump_type, is_major_bump, has_update, checked_at,
       is_prerelease, release_label ("stable"|"unverified"|"unknown"),
       source_method ("forge_api"|"rss")
@@ -500,9 +529,9 @@ def check_updates(tracked_services: list) -> tuple:
 
         result = {**svc, "checked_at": now_iso}
 
-        # ── Servizi stateless (latest) — nessun check versione necessario ──
+        # ── Stateless services (latest) — no version check needed ──
         if not rss_url or current_version == "latest":
-            result["skip_reason"] = "stateless o rss_url assente"
+            result["skip_reason"] = "stateless, or no rss_url"
             result.update({"is_prerelease": False, "release_label": "unknown"})
             unchanged.append(result)
             continue
@@ -530,23 +559,23 @@ def check_updates(tracked_services: list) -> tuple:
                 except Exception as api_err:
                     api_error_msg = f"{type(api_err).__name__}: {api_err}"
                     print(
-                        f"⚠️  Forge API fallback per {svc.get('display_name', svc.get('compose_name'))}: "
+                        f"⚠️  Forge API fallback for {svc.get('display_name', svc.get('compose_name'))}: "
                         f"{api_error_msg}",
                         file=sys.stderr
                     )
 
-            # ── Fallback: RSS (se l'API del forge ha fallito o non è disponibile) ─
+            # ── Fallback: RSS (when the forge API failed or is unavailable) ──
             if latest_raw is None:
                 latest_raw    = get_latest_from_rss(rss_url, current_version)
-                is_prerelease = False          # RSS non lo sa: assume stabile
-                release_label = "unverified"   # Segnala che non è stato validato via API
+                is_prerelease = False          # RSS cannot tell: assume stable
+                release_label = "unverified"   # Flags that the API did not confirm it
                 source_method = "rss"
 
             curr_tuple              = extract_semver(current_version)
             lat_tuple               = extract_semver(latest_raw)
             bump_type, is_major     = determine_bump(curr_tuple, lat_tuple)
 
-            # Calcola distanza di versione per dare peso alla priorità
+            # Version distance, used to weight priority
             version_gap = 0
             if curr_tuple != (0, 0, 0) and lat_tuple != (0, 0, 0):
                 version_gap = (
@@ -579,21 +608,21 @@ def check_updates(tracked_services: list) -> tuple:
             errors.append(result)
 
         except requests.exceptions.ConnectionError:
-            detail = f"Connessione rifiutata o DNS fallito — {rss_url}"
+            detail = f"Connection refused or DNS failure — {rss_url}"
             if api_error_msg:
                 detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except requests.exceptions.Timeout:
-            detail = f"Timeout dopo {TIMEOUT}s — {rss_url}"
+            detail = f"Timed out after {TIMEOUT}s — {rss_url}"
             if api_error_msg:
                 detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
             errors.append(result)
 
         except ET.ParseError:
-            detail = f"Feed XML non valido — {rss_url}"
+            detail = f"Invalid XML feed — {rss_url}"
             if api_error_msg:
                 detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
@@ -607,7 +636,7 @@ def check_updates(tracked_services: list) -> tuple:
             errors.append(result)
 
         except Exception as e:
-            detail = f"Errore imprevisto: {type(e).__name__}: {e}"
+            detail = f"Unexpected error: {type(e).__name__}: {e}"
             if api_error_msg:
                 detail = f"Forge API: {api_error_msg} → RSS fallback: {detail}"
             result["error_detail"] = detail
@@ -622,7 +651,7 @@ def main():
     run_at = datetime.now(timezone.utc).isoformat()
 
     try:
-        # 1. Carica metadati e configurazione compose
+        # 1. Load the metadata and the compose configuration
         metadata_map  = load_metadata()
         compose_data  = run_compose_config()
         services      = compose_data.get("services", {})
@@ -639,14 +668,14 @@ def main():
             }))
             return
 
-        # 2. Costruisce il manifest per TUTTI i servizi (upsert Postgres)
+        # 2. Build the manifest for EVERY service (Postgres upsert)
         manifest, untracked_warnings = build_manifest(services, metadata_map)
 
-        # 3. Controlla RSS solo per i servizi tracciati con un feed valido
+        # 3. Check releases only for tracked services that have a feed
         tracked = [s for s in manifest if s.get("is_tracked") and s.get("rss_url")]
         updates, errors, unchanged = check_updates(tracked)
 
-        # 4. Output strutturato per n8n
+        # 4. Structured output for n8n
         output = {
             "manifest":           manifest,
             "updates":            updates,
@@ -679,7 +708,7 @@ def main():
 
     except json.JSONDecodeError as e:
         print(json.dumps({
-            "fatal":              f"Output docker compose non è JSON valido: {e}",
+            "fatal":              f"docker compose output is not valid JSON: {e}",
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,
@@ -688,7 +717,7 @@ def main():
 
     except Exception as e:
         print(json.dumps({
-            "fatal":              f"Errore imprevisto: {type(e).__name__}: {e}",
+            "fatal":              f"Unexpected error: {type(e).__name__}: {e}",
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,

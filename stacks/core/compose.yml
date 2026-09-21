@@ -48,7 +48,7 @@ services:
     networks:
       - homelab
 
-  # ─── Notifiche push ──────────────────────────────────────────────────────────
+  # ─── Push notifications ──────────────────────────────────────────────────────
   ntfy:
     container_name: ntfy
     image: ${NTFY_IMAGE}:${NTFY_VERSION}
