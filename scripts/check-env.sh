@@ -6,12 +6,12 @@ ENV_FILE=".env"
 EXAMPLE_FILE=".env.example"
 
 if [[ ! -f "$EXAMPLE_FILE" ]]; then
-    echo "❌ File $EXAMPLE_FILE non trovato"
+    echo "❌ $EXAMPLE_FILE not found"
     exit 1
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
-    echo "❌ File $ENV_FILE non trovato"
+    echo "❌ $ENV_FILE not found"
     exit 1
 fi
 
@@ -29,29 +29,29 @@ env_vars=$(extract_vars "$ENV_FILE")
 
 missing=0
 
-echo "🔍 Controllo variabili mancanti..."
+echo "🔍 Checking for missing variables..."
 
 while read -r var; do
     if ! grep -qx "$var" <<< "$env_vars"; then
-        echo "❌ Variabile mancante in .env: $var"
+        echo "❌ Missing in .env: $var"
         missing=1
     fi
 done <<< "$example_vars"
 
 echo ""
-echo "🔍 Controllo variabili extra..."
+echo "🔍 Checking for extra variables..."
 
 while read -r var; do
     if ! grep -qx "$var" <<< "$example_vars"; then
-        echo "⚠️  Variabile extra presente in .env: $var"
+        echo "⚠️  Present in .env but not in the template: $var"
     fi
 done <<< "$env_vars"
 
 echo ""
 
 if [[ "$missing" -eq 1 ]]; then
-    echo "❌ .env NON allineato a .env.example"
+    echo "❌ .env is NOT aligned with .env.example"
     exit 1
 fi
 
-echo "✅ .env allineato a .env.example"
+echo "✅ .env is aligned with .env.example"
