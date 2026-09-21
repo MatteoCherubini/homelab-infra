@@ -409,7 +409,14 @@ def get_latest_from_forge_api(repo_url: str, owner: str, repo: str,
             if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
                 same_branch_stable.append(tag)
 
-    chosen = (same_branch_stable or any_stable or [None])[0]
+    # La release piu' RECENTE, non la prima che l'API restituisce.
+    # Le forge ordinano /releases per data di creazione del tag, che per due
+    # release pubblicate lo stesso giorno puo' invertire l'ordine di versione:
+    # il 2026-09-21 GitHub elencava n8n 2.39.9 prima di 2.39.10, e prendere
+    # l'elemento [0] faceva proporre una versione gia' superata. Ordinare per
+    # semver rende la scelta deterministica e indipendente dalla forge.
+    candidates = same_branch_stable or any_stable
+    chosen = max(candidates, key=extract_semver) if candidates else None
     if chosen is None:
         raise ValueError(
             f"Nessuna release stabile trovata via {forge['host']} API per {owner}/{repo}"
@@ -430,7 +437,7 @@ def is_stable_release(title: str) -> bool:
 
 def get_latest_from_rss(url: str, current_version: str = "") -> str:
     """
-    Scarica il feed Atom/RSS e ritorna il titolo della prima release stabile.
+    Scarica il feed Atom/RSS e ritorna il titolo della release stabile piu' alta.
     Se current_version è fornita, cerca una release con lo stesso major version
     PRIMA di accettare qualsiasi release (multi-branch: es. n8n v1/v2).
     Lancia eccezione se non trova nulla o se la rete fallisce.
@@ -463,11 +470,12 @@ def get_latest_from_rss(url: str, current_version: str = "") -> str:
                 if entry_semver != (0, 0, 0) and entry_semver[0] == current_major:
                     same_branch.append(title)
 
-    # Priorità: stessa branch > qualsiasi release stabile
-    if same_branch:
-        return same_branch[0]
-    if any_stable:
-        return any_stable[0]
+    # Priorità: stessa branch > qualsiasi release stabile.
+    # Come per il percorso API, si prende il massimo per semver e non il primo
+    # elemento del feed: l'ordine di un Atom riflette la data, non la versione.
+    candidates = same_branch or any_stable
+    if candidates:
+        return max(candidates, key=extract_semver)
 
     raise ValueError("Nessuna release stabile trovata nel feed")
 
