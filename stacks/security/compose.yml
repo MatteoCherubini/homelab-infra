@@ -17,8 +17,14 @@ services:
       SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
       INVITATIONS_ALLOWED: "${VAULTWARDEN_INVITATIONS_ALLOWED:-true}"
 
-      # Admin Panel (Comment out in .env and recreate the container after setup)
-      ADMIN_TOKEN: "${VAULTWARDEN_ADMIN_TOKEN}"
+      # Pannello di amministrazione. Il default vuoto è deliberato: senza un
+      # token Vaultwarden disabilita il pannello, ed è così che questa
+      # installazione vuole stare a regime. Il `:-` serve a dirlo in modo
+      # esplicito — senza, Compose emette un warning a ogni comando per una
+      # variabile che si è scelto di non impostare.
+      # Per abilitarlo: valorizzare VAULTWARDEN_ADMIN_TOKEN nel .env con un
+      # hash Argon2 (`vaultwarden hash`), non con testo in chiaro.
+      ADMIN_TOKEN: "${VAULTWARDEN_ADMIN_TOKEN:-}"
 
       # Security and brute-force protection
       LOGIN_RATELIMIT_MAX_BURST: "5"
