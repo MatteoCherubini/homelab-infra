@@ -24,7 +24,7 @@ bad()   { printf "  \033[31m✘\033[0m %s\n" "$1"; FAIL=$((FAIL+1)); }
 skip()  { printf "  \033[33m•\033[0m %s\n" "$1"; SKIP=$((SKIP+1)); }
 title() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
-SHELL_FILES=(scripts/*.sh UPS/kg-ups-handler)
+SHELL_FILES=(scripts/*.sh host/*)
 PY_FILES=(scripts/*.py)
 
 # ── 1. Shell syntax ──────────────────────────────────────────────────────
@@ -103,7 +103,32 @@ while read -r inc; do
   if [ -f "$inc" ]; then ok "include -> $inc"; else bad "include -> $inc (file missing)"; fi
 done < <(grep -E '^\s*-\s+stacks/.*\.yml\s*$' docker-compose.yml | sed -E 's/^\s*-\s+//; s/\s*$//')
 
-# ── 6. No committed secrets ──────────────────────────────────────────────
+# ── 6. Documentation links ───────────────────────────────────────────────
+# Relative links between documents are the first thing to rot when a file is
+# renamed or moved, and nothing else notices until a reader follows one.
+title "Documentation links resolve"
+if out=$(python3 - <<'PY' 2>&1
+import os, re, glob, sys
+bad = 0
+for f in sorted(glob.glob('*.md') + glob.glob('docs/**/*.md', recursive=True)):
+    base = os.path.dirname(f)
+    for text, target in re.findall(r'\[([^\]]+)\]\(([^)]+)\)',
+                                   open(f, encoding='utf-8').read()):
+        if target.startswith(('http://', 'https://', '#', 'mailto:')):
+            continue
+        path = os.path.normpath(os.path.join(base, target.split('#')[0]))
+        if not os.path.exists(path):
+            print(f"{f}: [{text}]({target}) -> {path} does not exist")
+            bad += 1
+sys.exit(1 if bad else 0)
+PY
+); then
+  ok "every relative link in the Markdown files resolves"
+else
+  bad "broken links"; printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
+# ── 7. No committed secrets ──────────────────────────────────────────────
 # The check that matters before making the repository public. It looks only at
 # TRACKED files: ignored ones (.env and friends) can and should hold real
 # credentials.
@@ -124,7 +149,7 @@ else
   ok ".env is not tracked"
 fi
 
-# ── 7. Unit tests ────────────────────────────────────────────────────────
+# ── 8. Unit tests ────────────────────────────────────────────────────────
 title "Unit tests"
 if out=$(python3 -m unittest discover -s tests 2>&1); then
   n=$(printf '%s' "$out" | grep -oE 'Ran [0-9]+ test' | grep -oE '[0-9]+')

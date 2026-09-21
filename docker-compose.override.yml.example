@@ -22,13 +22,34 @@
 # A gitignored override does not have that problem: the service stays declared
 # on this machine whichever branch is checked out.
 #
+# WHEN AN INCLUDE IS THE WRONG TOOL
+#
+# Including a compose file from another project works, but it couples the two:
+# every user who runs a compose command here must be able to READ that file,
+# and that includes any automation account.
+#
+# On this host, an included file under a home directory broke the scheduled
+# update checker: /home/<user> is mode 750, the automation runs as a different
+# account, and `docker compose config` failed with `permission denied` — which
+# took the whole manifest down, not just that one service.
+#
+# A project that has its own repository and its own lifecycle is better run as
+# its own compose project, attaching to this stack's network as `external`.
+# Orphan detection is per-project, so `--remove-orphans` here never has a claim
+# on it, and nothing needs to read across a directory boundary.
+#
+# The include below is for the smaller case: a compose file that belongs to
+# this machine, kept out of the repository, sitting somewhere every relevant
+# user can read.
+#
 # NOTES
 #
 # - Paths inside an included file resolve relative to THAT file's directory,
 #   not to the repository root: a `build: context: .` in
 #   /path/my-service/compose.yml builds from /path/my-service.
-# - Put it somewhere the user running the stack can write: /opt belongs to root
-#   on a standard Ubuntu install.
+# - Put it somewhere the user running the stack can write AND every other user
+#   who runs compose can read: /opt belongs to root on a standard Ubuntu
+#   install, and a home directory is usually not traversable by others.
 # - The `homelab` network is defined in docker-compose.yml and inherited
 #   through the merge; included files must not redeclare it, or the include
 #   conflicts.
