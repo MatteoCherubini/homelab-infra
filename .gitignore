@@ -2,9 +2,11 @@
 data/
 media/
 
-# Secrets
-.env
-.env.backup-*
+# Secrets — tutto ciò che assomiglia a un .env resta fuori, tranne il template.
+# Regola volutamente larga: .env.backup e .env.save (creati a mano durante le
+# manutenzioni) sfuggivano a un pattern piu' stretto e contengono segreti veri.
+.env*
+!.env.example
 
 # OS
 .DS_Store
