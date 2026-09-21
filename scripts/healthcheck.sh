@@ -12,8 +12,9 @@
 #   ./scripts/healthcheck.sh              # everything
 #   ./scripts/healthcheck.sh n8n forgejo  # selected services only
 #
-# Exits 0 when every check passes, 1 otherwise, so an upgrade script can use
-# it as a rollback condition.
+# Every check runs before anything is reported — a comparison is only useful
+# whole — and the exit code is 0 when they all passed, 1 otherwise, so an
+# upgrade script can use it as a rollback condition.
 
 set -uo pipefail
 
@@ -75,13 +76,16 @@ http() {
 }
 
 # Container id of a compose service, without assuming the project prefix.
-cid() { docker compose ps -q "$1" 2>/dev/null | head -1; }
+# `-a` matters: without it `ps -q` lists only RUNNING containers, so a stopped
+# or created one is reported as "no container" — the least useful thing to say
+# at exactly the moment someone is diagnosing why a service is down.
+cid() { docker compose ps -qa "$1" 2>/dev/null | head -1; }
 
 # state <service> — running, and healthy when the service declares a healthcheck.
 state() {
   local svc=$1 id st
   id=$(cid "$svc")
-  if [ -z "$id" ]; then bad "$svc" "no container"; return 1; fi
+  if [ -z "$id" ]; then bad "$svc" "no container declared"; return 1; fi
   st=$(docker inspect -f '{{.State.Status}}{{if .State.Health}}/{{.State.Health.Status}}{{end}}' "$id" 2>/dev/null)
   case "$st" in
     running|running/healthy) ok "$svc" "$st" ;;

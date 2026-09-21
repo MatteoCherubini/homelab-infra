@@ -5,8 +5,9 @@ through Docker Compose and versioned as code.
 
 Thirteen services across six stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
-manager, file sync, push notifications — plus a seventh stack for UPS
-orchestration, written and left disabled until the hardware is installed.
+manager, file sync and push notifications — plus a UPS subsystem that runs on
+the host rather than in a container, because ordered shutdown means halting
+the host itself.
 
 The point of this repository is not that it runs containers. It is that every
 version, hostname and credential lives in one place, that upgrades are checked
@@ -17,226 +18,25 @@ the thing still works after you have changed it.
 
 ## Services
 
-| Service             | Stack      | Role                                            |
-| ------------------- | ---------- | ----------------------------------------------- |
-| Nginx Proxy Manager | `core`     | Reverse proxy, TLS termination                  |
-| Homepage            | `core`     | Dashboard and service discovery                 |
-| Cloudflared         | `core`     | Cloudflare Tunnel for external access           |
-| ntfy                | `core`     | Push notifications (auth required, deny-by-default) |
-| Ollama              | `ai`       | Local LLM runtime, NVIDIA GPU reservation       |
-| n8n                 | `automation` | Workflow automation, queue execution mode     |
-| n8n-worker          | `automation` | Executes workflow nodes off the Redis queue   |
-| PostgreSQL 18       | `automation` | n8n persistence                               |
-| Redis 8             | `automation` | n8n job queue                                 |
-| Syncthing           | `automation` | File ingress, driven over its REST API by n8n |
-| Forgejo             | `git`      | Self-hosted Git forge                           |
-| Vaultwarden         | `security` | Bitwarden-compatible password manager           |
-| Excalidraw          | `tools`    | Whiteboard                                      |
-| NUT                 | `ups`      | UPS monitoring — defined, not currently enabled |
+| Service             | Stack        | Role                                        |
+| ------------------- | ------------ | ------------------------------------------- |
+| Nginx Proxy Manager | `core`       | Reverse proxy, TLS termination              |
+| Homepage            | `core`       | Dashboard and service discovery             |
+| Cloudflared         | `core`       | Cloudflare Tunnel for external access       |
+| ntfy                | `core`       | Push notifications, deny-by-default         |
+| Ollama              | `ai`         | Local LLM runtime, NVIDIA GPU reservation   |
+| n8n                 | `automation` | Workflow automation, queue execution mode   |
+| n8n-worker          | `automation` | Executes workflow nodes off the Redis queue |
+| PostgreSQL 18       | `automation` | n8n persistence                             |
+| Redis 8             | `automation` | n8n job queue                               |
+| Syncthing           | `automation` | File ingress, driven by n8n over its API    |
+| Forgejo             | `git`        | Self-hosted Git forge                       |
+| Vaultwarden         | `security`   | Bitwarden-compatible password manager       |
+| Excalidraw          | `tools`      | Whiteboard                                  |
 
 ---
 
-## Repository layout
-
-```text
-.
-├── docker-compose.yml       # root: includes the stacks, defines the shared network
-├── docker-compose.override.yml.example
-├── .env.example             # single source of truth for versions and configuration
-├── Makefile                 # operational entrypoints
-├── stacks/
-│   ├── core/  ai/  automation/  git/  security/  tools/  ups/
-├── scripts/
-│   ├── init.sh              # first-run setup: .env, directories, permissions
-│   ├── check-env.sh         # .env vs .env.example drift detection
-│   ├── check_updates.py     # release checker + service manifest generator
-│   ├── healthcheck.sh       # live verification of the running stack
-│   └── run-tests.sh         # offline suite: lint, syntax, secrets, unit tests
-├── tests/                   # unit tests (stdlib unittest, no dependencies)
-├── workflows/               # n8n workflow definitions, exported as JSON
-├── UPS/                     # ordered shutdown orchestration (NUT + systemd + SSH)
-└── services_metadata.json   # per-service criticality and upstream repository
-```
-
-Persistent data lives outside the repository, under the paths set by
-`DATA_ROOT` and `MEDIA_ROOT`. Nothing stateful is tracked in Git.
-
----
-
-## Configuration model
-
-Everything environment-specific is in `.env`, which is never committed. No
-image tag, published port or public hostname is written into a compose file;
-they are variable references, with a sensible default where one exists:
-
-```yaml
-image: ${FORGEJO_IMAGE}:${FORGEJO_VERSION}
-ports: ["${FORGEJO_HTTP_PORT:-3001}:3000"]
-FORGEJO__server__DOMAIN: "${FORGEJO_DOMAIN}"
-```
-
-This is what makes the stacks reusable by someone else, and it is checked
-rather than assumed: `make check-env` fails when `.env` is missing a key that
-`.env.example` declares and warns about keys it has in addition, while
-`make verify` compares the image tags declared in the repository against the
-images actually running.
-
-Two notes worth reading before a first deployment, both also in
-`.env.example`: changing `FORGEJO_DOMAIN` after the first start breaks
-existing Git remotes and webhook URLs, and changing `VAULTWARDEN_DOMAIN`
-invalidates registered WebAuthn passkeys, which are bound to the exact domain.
-
-### Local-only services
-
-Services that should run on one machine without entering the repository —
-a separate project, or something being trialled — go in a gitignored
-`docker-compose.override.yml`. See `docker-compose.override.yml.example` for
-why this is preferable to a dedicated branch.
-
----
-
-## Operations
-
-```
-make init           Bootstrap: .env, data directories, permissions
-make up             Start everything
-make down           Stop everything
-make ps             Status of running services
-make logs           Live logs
-
-make test           Offline suite: lint, syntax, JSON/YAML, secrets, unit tests
-make check          Prerequisites and compose config validity
-make check-env      .env vs .env.example drift
-make verify         Declared image tags vs running containers
-make healthcheck    End-to-end verification (see below)
-make health         Containers that are not healthy
-make gpu-check      NVIDIA runtime availability
-make check-updates  Generate the service manifest and check for new releases
-```
-
----
-
-## Testing and verification
-
-Two layers, deliberately separate.
-
-### `make test` — offline, no Docker
-
-Runs without a network, without containers and without a `.env`, so it works
-on a freshly cloned laptop and in CI, and can be run *before* touching the
-server rather than after. It covers:
-
-- shell syntax and `shellcheck` at `warning` severity — behavioural defects
-  only, not style, because a gate that reports everything stops being read;
-- Python syntax, and unit tests for `check_updates.py`;
-- validity of `services_metadata.json` and the exported n8n workflows;
-- every compose file parses, and every stack the root file includes exists —
-  a bad include path breaks *every* compose command, not just that stack;
-- no private key or JWT in any tracked file, and `.env` not tracked.
-
-Checks that cannot run degrade to an explicit skip rather than a silent pass.
-A test that reports success without having executed is worse than no test,
-because it removes the reason to look elsewhere.
-
-The unit tests exist for one reason: `check_updates.py` fails *silently*. If
-release selection wrongly discards a valid release, nothing errors — the
-checker reports "no updates", which is indistinguishable from there genuinely
-being none, and the host can sit on a vulnerable version for months. Each test
-pins one concrete way of failing that way, including two found in this
-codebase: picking whichever release the forge API happened to list first, and
-a pre-release filter matching `rc` inside `architecture`, `source` and
-`force`, and `dev` inside `device`.
-
-### `make healthcheck` — against the running system
-
-`docker compose ps` reports that a process is alive, which is not the same as
-the service working. This queries each service's health endpoint and, where a
-service returns something meaningful, asserts on the response body too —
-Nginx and Forgejo both answer `200` from the frontend while the backend behind
-them is broken.
-
-It also prints a fingerprint of the n8n database: workflow count, active
-workflows, credentials, migrations applied. Comparing that fingerprint on both
-sides of an upgrade is the most direct way to notice that a migration lost
-something. It exits non-zero on the first failure, so it can gate a rollback.
-
-```bash
-make test                     # offline
-make healthcheck              # live, everything
-./scripts/healthcheck.sh n8n  # live, one service
-```
-
----
-
-## Update workflow
-
-Image versions are pinned in `.env` and never floated, except for three
-services deliberately tracked on `latest`: Cloudflared and Excalidraw, which
-hold no state, and Ollama, whose models live in a volume the image does not
-own.
-
-The upgrade path is automated up to the point of decision, and manual past it:
-
-1. `scripts/check_updates.py` builds a manifest of every service from
-   `docker compose config`, enriches it from `services_metadata.json`, and
-   queries each upstream forge — GitHub, Codeberg, or any Gitea-compatible
-   API — for the newest stable release on the current major branch.
-   Pre-releases are filtered out, and candidates are compared by semantic
-   version rather than by the order the API returns them.
-2. An n8n workflow runs it on a schedule and pushes a summary to ntfy.
-3. A second pass asks a locally hosted model, through Ollama, to rank the
-   updates by risk and propose an order.
-4. A human reads the release notes, applies the change, and verifies it.
-
-Step 4 is not automated on purpose. The risk assessment is an aid, not an
-authority: it has no access to the upstream release notes, so it reasons from
-version numbers alone and will call a patch release harmless when that patch
-closes a remote code execution hole.
-
-Applying an update means bumping the version in `.env`, pulling, recreating
-the service, and running `make healthcheck` on both sides of the change.
-Because tags are pinned, rolling back a container is a matter of restoring the
-previous value — but a database migration is not reversible that way, so
-stateful services get a snapshot first.
-
----
-
-## Networking and external access
-
-Services share a single Docker bridge network and are addressed by service
-name. External access is fronted by Nginx Proxy Manager for TLS and by a
-Cloudflare Tunnel, which reaches Cloudflare through an outbound connection
-rather than an inbound one.
-
-Internal calls use container addresses rather than public hostnames: n8n
-reaches Forgejo at `http://forgejo:3000`, which keeps working when the tunnel
-is down and never leaves the host. n8n's SSRF protection is left enabled, with
-an explicit hostname allowlist.
-
-Syncthing publishes its GUI and API on loopback only; its sync ports are on
-the LAN, and n8n drives it over the internal network with an API key.
-
----
-
-## GPU
-
-Ollama holds an NVIDIA device reservation for local inference. Homepage takes
-a `utility`-capability reservation on the same GPU to read telemetry for the
-dashboard.
-
----
-
-## UPS orchestration
-
-`UPS/` contains an ordered shutdown design built on NUT, systemd and an SSH
-forced-command handler: on mains failure the workstation is shut down first
-and the server second, with automatic recovery when power returns. The compose
-stack is written and left commented out in the root file, pending the physical
-install.
-
----
-
-## Deployment
+## Quick start
 
 ```bash
 git clone <this repository>
@@ -251,26 +51,94 @@ make up
 make healthcheck
 ```
 
-Every password and token in `.env.example` is a placeholder. `make check`
-reports how many `CHANGE_ME` values are still in place.
+Every password and token in `.env.example` is a placeholder; `make check`
+reports how many are still in place.
 
 ---
 
-## Design decisions
+## Documentation
+
+Detail lives in [`docs/`](docs/README.md).
+
+**Cross-cutting**
+
+- [Architecture](docs/architecture.md) — stacks, networking, external access,
+  storage, GPU, and the design decisions behind them
+- [Configuration](docs/configuration.md) — the `.env` model, secrets, public
+  hostnames, local-only overrides
+- [Operations](docs/operations.md) — the `make` targets, first run, day-to-day,
+  and what to be careful with
+- [Updating](docs/updating.md) — version policy, the release checker, the
+  upgrade procedure
+- [Testing](docs/testing.md) — the two verification layers, and what neither
+  covers
+
+**Per stack**
+
+[core](docs/stacks/core.md) ·
+[ai](docs/stacks/ai.md) ·
+[automation](docs/stacks/automation.md) ·
+[git](docs/stacks/git.md) ·
+[security](docs/stacks/security.md) ·
+[tools](docs/stacks/tools.md)
+
+**Host-level**
+
+- [UPS orchestration](docs/stacks/ups.md) — NUT, systemd and an SSH forced
+  command; runs on the host, not in Compose
+
+---
+
+## Repository layout
+
+```text
+.
+├── docker-compose.yml       # includes the stacks, declares the shared network
+├── docker-compose.override.yml.example
+├── .env.example             # single source of truth for versions and config
+├── Makefile                 # operational entrypoints
+├── stacks/                  # one compose file per responsibility
+│   └── core/ ai/ automation/ git/ security/ tools/
+├── scripts/
+│   ├── init.sh              # first-run setup
+│   ├── check-env.sh         # .env vs .env.example drift
+│   ├── check_updates.py     # release checker + service manifest
+│   ├── healthcheck.sh       # live verification of the running stack
+│   └── run-tests.sh         # offline suite
+├── tests/                   # unit tests (stdlib unittest, no dependencies)
+├── host/                    # artefacts installed on the host, not in a container
+├── docs/
+├── workflows/               # n8n workflow definitions, exported as JSON
+└── services_metadata.json   # per-service criticality and upstream repository
+```
+
+Persistent data lives outside the repository, under `DATA_ROOT` and
+`MEDIA_ROOT`. Nothing stateful is tracked in git.
+
+---
+
+## How it hangs together
+
+**Configuration is a single source of truth.** No image tag, published port or
+public hostname is written into a compose file — they are variable references
+resolved from `.env`. `make check-env` fails when `.env` drifts from the
+template, and `make verify` compares the tags the repository declares against
+the images actually running.
+
+**Upgrades are checked automatically and applied deliberately.** A scheduled
+job queries each upstream forge for the newest stable release on the current
+major, pushes a summary to ntfy, and asks a local model to rank the updates by
+risk. A person then reads the actual release notes and applies the change. That
+last step is manual on purpose: the risk assessment reasons from version
+numbers alone, and has called a patch release routine on a day when it closed
+two remote code execution holes.
+
+**Verification is a first-class artefact.** `make test` runs offline with no
+Docker and no `.env`, so it works on a fresh clone and in CI. `make healthcheck`
+runs against the live system, asserts on response bodies rather than status
+codes, and prints a fingerprint of the n8n database to compare on both sides of
+an upgrade.
 
 **Compose rather than Kubernetes.** The workload is a single host with a GPU.
 Kubernetes would add an orchestration layer whose failure modes are harder to
 debug than the problems it would solve here.
-
-**One stack per responsibility.** Stacks are included from a root compose file
-and can be disabled by commenting out a single line. They share one network,
-declared once at the root; included files inherit it rather than redeclaring
-it.
-
-**Pinned tags, with three exceptions.** Cloudflared, Excalidraw and Ollama
-track `latest` because they hold no state worth a rollback. Everything else is
-pinned so that "what is running" is answerable from the repository.
-
-**Configuration is data, not shell.** `.env` is parsed key by key rather than
-sourced. A legitimate value containing spaces — a Gmail app password, for
-instance — makes a shell try to execute its second word.
