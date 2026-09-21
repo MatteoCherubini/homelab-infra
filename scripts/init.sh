@@ -36,8 +36,6 @@ dirs=(
     "$DATA/ollama/data"
     # Automation
     "$DATA/n8n/db" "$DATA/n8n/data" "$DATA/n8n/redis"
-    # UPS (prepared, not enabled yet)
-    "$DATA/nut/etc"
     # Media (RAID)
     "$MEDIA/forgejo/data"
 )
