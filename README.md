@@ -5,8 +5,9 @@ through Docker Compose and versioned as code.
 
 Thirteen services across six stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
-manager, file sync, push notifications — plus a seventh stack for UPS
-orchestration, written and left disabled until the hardware is installed.
+manager, file sync and push notifications — plus a UPS subsystem that runs on
+the host rather than in a container, because ordered shutdown means halting
+the host itself.
 
 The point of this repository is not that it runs containers. It is that every
 version, hostname and credential lives in one place, that upgrades are checked
@@ -32,7 +33,6 @@ the thing still works after you have changed it.
 | Forgejo             | `git`        | Self-hosted Git forge                       |
 | Vaultwarden         | `security`   | Bitwarden-compatible password manager       |
 | Excalidraw          | `tools`      | Whiteboard                                  |
-| NUT                 | `ups`        | UPS monitoring — defined, not yet enabled   |
 
 ---
 
@@ -80,8 +80,12 @@ Detail lives in [`docs/`](docs/README.md).
 [automation](docs/stacks/automation.md) ·
 [git](docs/stacks/git.md) ·
 [security](docs/stacks/security.md) ·
-[tools](docs/stacks/tools.md) ·
-[ups](docs/stacks/ups.md)
+[tools](docs/stacks/tools.md)
+
+**Host-level**
+
+- [UPS orchestration](docs/stacks/ups.md) — NUT, systemd and an SSH forced
+  command; runs on the host, not in Compose
 
 ---
 
@@ -94,7 +98,7 @@ Detail lives in [`docs/`](docs/README.md).
 ├── .env.example             # single source of truth for versions and config
 ├── Makefile                 # operational entrypoints
 ├── stacks/                  # one compose file per responsibility
-│   └── core/ ai/ automation/ git/ security/ tools/ ups/
+│   └── core/ ai/ automation/ git/ security/ tools/
 ├── scripts/
 │   ├── init.sh              # first-run setup
 │   ├── check-env.sh         # .env vs .env.example drift

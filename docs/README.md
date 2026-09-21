@@ -23,7 +23,15 @@ the overview; this is the detail.
 | [git](stacks/git.md) | Forgejo |
 | [security](stacks/security.md) | Vaultwarden |
 | [tools](stacks/tools.md) | Excalidraw |
-| [ups](stacks/ups.md) | NUT — ordered shutdown runbook (stack not yet enabled) |
+
+## Host
+
+Not everything runs in a container. Artefacts installed on the host live in
+`host/`.
+
+| Document | Covers |
+|----------|--------|
+| [UPS orchestration](stacks/ups.md) | NUT, systemd, SSH forced command — ordered shutdown on mains failure |
 
 ## Conventions
 
