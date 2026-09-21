@@ -1,4 +1,6 @@
 # ── UPS: NUT (Network UPS Tools) ──
+# Full runbook, and why the host-side design is the one that works:
+# docs/stacks/ups.md
 # Enable after connecting the UPS to the server over USB.
 # Then uncomment the include line in the root docker-compose.yml.
 

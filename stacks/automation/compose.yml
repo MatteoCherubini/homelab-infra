@@ -1,21 +1,13 @@
-# ── AUTOMATION: n8n v2 + Worker + PostgreSQL 18 + Redis 8 + Syncthing ─────────
+# ── AUTOMATION: n8n (queue mode) + worker + PostgreSQL 18 + Redis 8 + Syncthing
 #
+# Why the anchor below exists, how n8n reaches Syncthing, and the upgrade
+# procedure: docs/stacks/automation.md
 # Ref: https://docs.n8n.io/2-0-breaking-changes/
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Knowledge Genome: the variables the flows read as $env ────────────────────
-#
-# A SHARED ANCHOR, AND NOT AS A MATTER OF STYLE.
-#
-# EXECUTIONS_MODE is `queue`: nodes do not run in `n8n`, they run in
-# `n8n-worker`. The expression {{ $env.X }} is resolved by whichever process
-# executes the node — so a variable set only on `n8n` produces a flow that looks
-# correctly configured in the editor and resolves to an empty string at run
-# time. An `ssh '' 'pi decide …'` that fails a long way from the omission.
-#
-# The two `environment:` blocks below already repeat SYNCTHING_URL, TORRE_MAC and
-# the keys by hand: that is exactly how a variable ends up on one and not the
-# other. With the anchor, that state is not representable.
+# Merged into BOTH n8n and n8n-worker. In queue mode the worker executes the
+# nodes, so a variable set on only one of them resolves to an empty string at
+# run time while looking correct in the editor.
 x-kg-env: &kg-env
   # SSH aliases, resolved in n8n-runner's ~/.ssh/config ON THIS HOST — not names
   # n8n resolves itself: the path is two hops, n8n → n8n-runner@this-host →
@@ -37,13 +29,8 @@ x-kg-env: &kg-env
   # AUTHORISATION list: who may start a phase by merging.
   # Empty means nobody — it fails closed on purpose.
   KG_ALLOWED_SENDERS: ${KG_ALLOWED_SENDERS}
-  # NO KG_*_WEBHOOK_PATH HERE, deliberately. A Webhook node's `path` is
-  # registered when the workflow is ACTIVATED, before any execution context
-  # exists, so it cannot be an expression and n8n cannot read it from this
-  # environment: the value is typed into the node by hand on import. These three
-  # were passed in for a year, read by nothing, and a rotation was carried out
-  # against them while the nodes went on listening on their old paths.
-  # The janitor already has a fallback (`|| 15`), so this is a preference.
+  # No KG_*_WEBHOOK_PATH here, deliberately: a Webhook node's `path` is read at
+  # activation time and cannot come from the environment. See the stack doc.
   KG_IDLE_MINUTES: ${KG_IDLE_MINUTES:-30}
 
 services:
@@ -171,23 +158,8 @@ services:
     networks:
       - homelab
 
-  # ── SYNCTHING: raw ingress (Obsidian → nexus) — Knowledge Genome ──────
-  #
-  # Lives alongside n8n because they work as a pair: n8n queries the REST API of
-  # Syncthing to detect modified raws, map them to the collaborator, and
-  # commit them.
-  #
-  # Reachability n8n → Syncthing:
-  #   - STGUIADDRESS=0.0.0.0:8384 makes the API listen on the entire network of
-  #     the container, so n8n (same 'homelab' network) can call it via
-  #     http://syncthing:8384 with the X-API-Key header. NB: add 'syncthing'
-  #     to N8N_SSRF_ALLOWED_HOSTNAMES in the .env file, otherwise SSRF protection will block it.
-  #   - Port 8384 is published ONLY on the host's 127.0.0.1 (human admin);
-  #     it is not exposed on the LAN.
-  # Sync ports (22000 tcp/udp, 21027/udp discovery) are published on the LAN for peers
-  # (laptops, phones). LAN-only tuning (no global discovery/relay) is configured
-  # in the GUI or via config after the first startup.
-  # ──────────────────────────────────────────────────────────────────────────────
+  # ── SYNCTHING: file ingress, driven by n8n over its REST API ──────────
+  # Reachability, exposure and volume layout: docs/stacks/automation.md
   syncthing:
     image: ${SYNCTHING_IMAGE}:${SYNCTHING_VERSION}
     restart: unless-stopped

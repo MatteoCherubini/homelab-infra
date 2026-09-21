@@ -1,5 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║              HOMELAB – Docker Compose Root                  ║
+# ║              Architecture: docs/architecture.md             ║
 # ║                                                              ║
 # ║  To disable a stack: comment out its include line.           ║
 # ║                                                              ║

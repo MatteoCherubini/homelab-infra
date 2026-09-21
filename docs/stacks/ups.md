@@ -1,7 +1,27 @@
-# 🟢 Homelab UPS Orchestration
+# UPS stack
 
-> Ordered shutdown, torre → nexus, on mains failure, with automatic recovery.
-> Built on **NUT** (Network UPS Tools), **systemd**, an **SSH forced command** and **Docker Compose**.
+Ordered shutdown, workstation → server, on mains failure, with automatic
+recovery. Built on **NUT** (Network UPS Tools), **systemd**, an **SSH forced
+command** and **Docker Compose**.
+
+This subsystem spans two layers, which is why its pieces live in two places:
+
+| Layer | What | Where |
+|-------|------|-------|
+| Host | The event handler NUT invokes, installed to `/usr/local/bin` | `host/kg-ups-handler` |
+| Host | NUT configuration, systemd units, the SSH forced command | Not in the repository — created from this runbook |
+| Container | `nut-upsd`, the NUT server as a container | `stacks/ups/compose.yml` |
+
+> **Status: not currently enabled.** The include line for `stacks/ups` is
+> commented out in `docker-compose.yml`, pending the physical install. The
+> host-side design below is complete and tested; uncomment the include once the
+> UPS is wired up.
+
+The two layers are alternatives, not complements: either NUT runs on the host
+(the arrangement this runbook describes, and the one that works, because
+`upsmon` must halt the host itself) or it runs in the container. The container
+stack is kept for the case where only monitoring is wanted, without the
+shutdown orchestration.
 
 ---
 
@@ -197,7 +217,16 @@ It must print the dry-run output **without** `unauthorized command`.
 
 ## 🧠 Orchestration scripts
 
-### `kg-ups-handler` (nexus)
+### `kg-ups-handler` (on the server)
+
+Source: `host/kg-ups-handler`. Install with:
+
+```bash
+sudo install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
+```
+
+The ntfy token it uses lives in `/etc/nut/kg-ups.env`, mode 0600, owned by
+root — never in `.env`, which is readable by the user running Compose.
 
 Handles:
 - `torre-down` → SSH to torre for a graceful shutdown
@@ -340,4 +369,4 @@ sudo upsmon -c fsd
 
 ---
 
-*Written for the nexus/torre homelab — Green Cell PowerProof 2000VA.*
+*Written for this homelab's server/workstation pair — Green Cell PowerProof 2000VA.*

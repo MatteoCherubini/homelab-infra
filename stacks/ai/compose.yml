@@ -1,4 +1,5 @@
-# ── AI: Ollama (GPU-only, dedicato alla GTX 1660 Super) ──
+# ── AI: Ollama, on a dedicated NVIDIA GPU ──
+# docs/stacks/ai.md
 
 services:
   ollama:

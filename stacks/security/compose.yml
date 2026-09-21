@@ -1,4 +1,5 @@
 # ── SECURITY: Vaultwarden ────────────────────────────────────────────────────
+# Admin panel policy, WebAuthn caveat, upgrade notes: docs/stacks/security.md
 services:
   vaultwarden:
     image: ${VAULTWARDEN_IMAGE}:${VAULTWARDEN_VERSION}
@@ -17,12 +18,8 @@ services:
       SIGNUPS_ALLOWED: "${VAULTWARDEN_SIGNUPS_ALLOWED:-false}"
       INVITATIONS_ALLOWED: "${VAULTWARDEN_INVITATIONS_ALLOWED:-true}"
 
-      # Admin panel. The empty default is deliberate: with no token
-      # Vaultwarden disables the panel, which is how this install is meant to
-      # sit. The `:-` states that explicitly — without it Compose warns on
-      # every command about a variable we chose not to set.
-      # To enable it: set VAULTWARDEN_ADMIN_TOKEN in .env to an Argon2 hash
-      # (`vaultwarden hash`), never to plaintext.
+      # Empty is deliberate: with no token Vaultwarden disables the panel.
+      # The `:-` states that, and stops Compose warning on every command.
       ADMIN_TOKEN: "${VAULTWARDEN_ADMIN_TOKEN:-}"
 
       # Brute-force protection
