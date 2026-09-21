@@ -1,48 +1,49 @@
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  Stack locali — copiare in docker-compose.override.yml       ║
+# ║  Local stacks — copy to docker-compose.override.yml          ║
 # ╚══════════════════════════════════════════════════════════════╝
 #
-# Docker Compose legge automaticamente `docker-compose.override.yml` accanto
-# al file principale e ne fonde il contenuto. Il file vero è gitignorato:
-# serve a far girare su UNA macchina servizi che non appartengono a questo
-# repository — un progetto separato, o un servizio che si sta solo provando.
+# Docker Compose automatically reads `docker-compose.override.yml` next to the
+# main file and merges it in. The real file is gitignored: it exists to run
+# services on ONE machine that do not belong to this repository — a separate
+# project, or something you are only trying out.
 #
-# PERCHÉ NON UN BRANCH
+# WHY NOT A BRANCH
 #
-# Tenere un servizio locale in un branch dedicato sembra comodo e ha un
-# effetto collaterale sgradevole: quando si torna su un altro branch il
-# servizio continua a girare, ma non è più dichiarato da nessun file. Docker
-# lo considera allora un container "orfano" del progetto, e `make up` — che
-# usa `--remove-orphans` — lo rimuove senza chiedere.
+# Keeping a local service on a dedicated branch looks convenient and has an
+# unpleasant side effect: switch back to another branch and the service keeps
+# running, but no file declares it any more. Docker then treats it as an
+# "orphan" container of the project, and `make up` — which passes
+# `--remove-orphans` — deletes it without asking.
 #
-# È già successo su questa infrastruttura: un container è rimasto in
-# esecuzione per settimane con le sue directory montate ormai vuote e il
-# compose file che lo definiva sparito dal disco, quindi non più ricreabile.
+# This has already happened on this infrastructure: a container stayed up for
+# weeks with its mounted directories by then empty and the compose file that
+# defined it gone from disk, so it could no longer be recreated.
 #
-# Un override gitignorato non ha questo problema: il servizio resta
-# dichiarato su questa macchina qualunque sia il branch attivo.
+# A gitignored override does not have that problem: the service stays declared
+# on this machine whichever branch is checked out.
 #
-# NOTE
+# NOTES
 #
-# - I percorsi dentro un file incluso si risolvono rispetto alla directory di
-#   QUEL file, non rispetto alla root: un `build: context: .` in
-#   /percorso/mio-servizio/compose.yml costruisce da /percorso/mio-servizio.
-# - Il percorso va scelto dove l'utente che gestisce lo stack può scrivere:
-#   /opt appartiene a root su una Ubuntu standard.
-# - La rete `homelab` è definita in docker-compose.yml e viene ereditata dal
-#   merge: i file inclusi non devono ridichiararla, o l'include va in conflitto.
-# - Le variabili che servono al servizio locale vanno nel .env di questa
-#   macchina. `make check-env` le segnalerà come "extra" rispetto a
-#   .env.example: è atteso e corretto, non sono configurazione del repository.
+# - Paths inside an included file resolve relative to THAT file's directory,
+#   not to the repository root: a `build: context: .` in
+#   /path/my-service/compose.yml builds from /path/my-service.
+# - Put it somewhere the user running the stack can write: /opt belongs to root
+#   on a standard Ubuntu install.
+# - The `homelab` network is defined in docker-compose.yml and inherited
+#   through the merge; included files must not redeclare it, or the include
+#   conflicts.
+# - Variables the local service needs go in this machine's .env.
+#   `make check-env` will report them as extra compared to .env.example: that
+#   is expected and correct — they are not repository configuration.
 
-# Progetto che vive in un repository suo, fuori da questo albero:
+# A project living in its own repository, outside this tree:
 include:
-  - /percorso/del/progetto-separato/compose.yml
+  - /path/to/separate-project/compose.yml
 
-# Oppure un servizio dichiarato direttamente qui:
+# Or a service declared directly here:
 # services:
-#   qualcosa-in-prova:
-#     image: qualche/immagine:1.2.3
+#   something-im-trying:
+#     image: some/image:1.2.3
 #     restart: unless-stopped
 #     networks:
 #       - homelab

@@ -3,76 +3,76 @@
 
 SHELL := /bin/bash
 
-help: ## Mostra questo help
+help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-init: ## Setup iniziale: crea .env, directory e config
+init: ## First-run setup: .env, data directories, permissions
 	@./scripts/init.sh
 
-up: ## Avvia tutto e rimuove orfani
+up: ## Start everything and remove orphan containers
 	docker compose up -d --remove-orphans
 
-down: ## Ferma tutto
+down: ## Stop everything
 	docker compose down
 
-restart: ## Restart di tutti i servizi
+restart: ## Restart every service
 	docker compose restart
 
-logs: ## Log live (tutti i servizi)
+logs: ## Follow logs from every service
 	docker compose logs -f --tail=50
 
-verify: ## Confronta le versioni dichiarate con quelle in esecuzione
-	@echo "🔍 Verifica allineamento Repo <-> Runtime..."
+verify: ## Compare declared image tags against the running containers
+	@echo "🔍 Repository <-> runtime alignment..."
 	@echo "------------------------------------------------------------------------------------------------"
-	@printf "%-25s %-40s %-40s %s\n" "SERVIZIO" "DICHIARATO (Repo)" "ATTIVO (Docker)" "STATO"
+	@printf "%-25s %-40s %-40s %s\n" "SERVICE" "DECLARED (repo)" "RUNNING (docker)" "STATE"
 	@echo "------------------------------------------------------------------------------------------------"
 	@comm --output-delimiter='|' \
 		<(docker compose config --format json | jq -r '.services | to_entries[] | "\(.key) \(.value.image)"' | sort) \
 		<(docker compose ps --format json | jq -r 'if type=="array" then .[] else . end | "\(.Service // .service) \(.Image // .image)"' | sort -u) \
 		| awk -F'|' '{ \
 			if ($$3 != "") { split($$3, a, " "); printf "%-25s %-40s %-40s ✅ OK\n", a[1], a[2], a[2] } \
-			else if ($$2 != "") { split($$2, a, " "); printf "%-25s %-40s %-40s ❌ DISALLINEATO\n", a[1], "N/A", a[2] } \
-			else { split($$1, a, " "); printf "%-25s %-40s %-40s ⚪ FERMO\n", a[1], a[2], "-" } \
+			else if ($$2 != "") { split($$2, a, " "); printf "%-25s %-40s %-40s ❌ MISMATCH\n", a[1], "N/A", a[2] } \
+			else { split($$1, a, " "); printf "%-25s %-40s %-40s ⚪ STOPPED\n", a[1], a[2], "-" } \
 		}'
 
-ps: ## Stato dei servizi attivi
+ps: ## Status of running services
 	docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-pull: ## Scarica immagini aggiornate (senza avviare)
+pull: ## Pull updated images without starting anything
 	docker compose pull
 
-check: check-env ## Verifica prerequisiti e validità configurazioni
+check: check-env ## Validate prerequisites and compose configuration
 	@echo "Docker:  $$(docker --version)"
 	@echo "Compose: $$(docker compose version)"
 	@echo ""
-	@docker compose config --quiet && echo "✅ Compose config valida" || echo "❌ Errore nella config"
+	@docker compose config --quiet && echo "✅ Compose configuration is valid" || echo "❌ Invalid compose configuration"
 	@echo ""
 	@if [ -f .env ]; then \
 		n=$$(grep -c "CHANGE_ME" .env || true); \
 		if [ "$$n" -gt 0 ]; then \
-			echo "⚠️  $$n valori CHANGE_ME ancora da sostituire nel .env"; \
+			echo "⚠️  $$n CHANGE_ME values still to replace in .env"; \
 		else \
-			echo "✅ Nessun CHANGE_ME trovato"; \
+			echo "✅ No CHANGE_ME left"; \
 		fi; \
 	fi
 
-check-env: ## Verifica che .env sia allineato a .env.example
+check-env: ## Check .env against .env.example for drift
 	@bash scripts/check-env.sh
 
-gpu-check: ## Verifica presenza GPU NVIDIA
+gpu-check: ## Check for an NVIDIA GPU
 	@nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
 		&& echo "GPU_OK" || echo "GPU_MISSING"
 
-test: ## Suite offline: lint, sintassi, JSON/YAML, segreti, test unitari
+test: ## Offline suite: lint, syntax, JSON/YAML, secrets, unit tests
 	@./scripts/run-tests.sh
 
-healthcheck: ## Verifica end-to-end: endpoint di salute + impronta dati (pre/post update)
+healthcheck: ## End-to-end check: health endpoints + data fingerprint (pre/post update)
 	@./scripts/healthcheck.sh $(SERVICE)
 
-health: ## Mostra solo i container non sani
+health: ## Show only containers that are not healthy
 	@docker compose ps --format "table {{.Name}}\t{{.Status}}" \
 		| grep -iE "restarting|exited|dead|unhealthy|created|paused|starting" \
-		|| echo "✅ Tutti i container sono sani"
+		|| echo "✅ Every container is healthy"
 
-check-updates: ## Genera il manifest JSON SSoT dei servizi
+check-updates: ## Build the service manifest and check for new releases
 	@python3 ./scripts/check_updates.py

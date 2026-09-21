@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-Test di scripts/check_updates.py — solo libreria standard, nessuna dipendenza
-da installare e nessuna rete: le chiamate HTTP sono sostituite da risposte
-finte, così la suite gira identica su un laptop e in CI.
+Tests for scripts/check_updates.py — standard library only, so there is
+nothing to install, and no network: HTTP calls are replaced with canned
+responses, which lets the suite run identically on a laptop and in CI.
 
     python3 -m unittest discover -s tests -v
     make test
 
-Il valore di questi test non è la copertura: è che il modo in cui questo
-script sbaglia è SILENZIOSO. Se la selezione della release scarta per errore
-un rilascio valido, il checker non segnala un errore — dice "nessun
-aggiornamento", ed è indistinguibile dal caso in cui davvero non ce ne sono.
-Un homelab può restare mesi su una versione vulnerabile senza che nulla lo
-faccia notare. Ogni test qui sotto blocca un modo concreto di fallire così.
+The value of these tests is not coverage: it is that the way this script goes
+wrong is SILENT. If release selection wrongly discards a valid release,
+nothing raises — the checker reports "no updates", which is indistinguishable
+from there genuinely being none, and a host can sit on a vulnerable version
+for months. Every test below pins one concrete way of failing like that.
 """
 
 import importlib.util
@@ -30,7 +29,7 @@ _spec.loader.exec_module(cu)
 
 
 def fake_response(payload, text=None):
-    """Risposta HTTP finta con la sola superficie che il modulo usa."""
+    """A stand-in HTTP response exposing only what the module uses."""
     resp = mock.Mock()
     resp.json.return_value = payload
     resp.text = text if text is not None else json.dumps(payload)
@@ -45,33 +44,33 @@ def gh_release(tag, prerelease=False, name=None, draft=False):
 
 # ──────────────────────────────────────────────────────────────────────────
 class TestExtractSemver(unittest.TestCase):
-    """Da stringa di versione a tupla confrontabile."""
+    """From a version string to a comparable tuple."""
 
-    def test_formati_comuni(self):
-        casi = {
+    def test_common_formats(self):
+        cases = {
             "v15.0.3":     (15, 0, 3),
             "2.15.0":      (2, 15, 0),
             "1.37.3":      (1, 37, 3),
             "v2.28.0":     (2, 28, 0),
-            "n8n@2.39.10": (2, 39, 10),   # tag di monorepo
-            "15.0":        (15, 0, 0),    # patch implicita
-            "10":          (10, 0, 0),    # tag Docker a numero singolo
+            "n8n@2.39.10": (2, 39, 10),   # monorepo tag
+            "15.0":        (15, 0, 0),    # implicit patch
+            "10":          (10, 0, 0),    # single-number Docker tag
             "v8":          (8, 0, 0),
         }
-        for testo, atteso in casi.items():
-            with self.subTest(testo=testo):
-                self.assertEqual(cu.extract_semver(testo), atteso)
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(cu.extract_semver(text), expected)
 
-    def test_non_versioni_danno_zero(self):
-        # (0,0,0) è il valore sentinella: determine_bump lo tratta come
-        # "non confrontabile" invece di fingere un confronto.
-        for testo in ("latest", "", "stable", "edge"):
-            with self.subTest(testo=testo):
-                self.assertEqual(cu.extract_semver(testo), (0, 0, 0))
+    def test_non_versions_yield_zero(self):
+        # (0,0,0) is the sentinel: determine_bump treats it as "not
+        # comparable" instead of inventing a comparison.
+        for text in ("latest", "", "stable", "edge"):
+            with self.subTest(text=text):
+                self.assertEqual(cu.extract_semver(text), (0, 0, 0))
 
-    def test_2_39_10_e_maggiore_di_2_39_9(self):
-        # Il confronto è fra interi, non fra stringhe: "2.39.9" > "2.39.10"
-        # lessicograficamente, ed è l'errore che si vuole escludere.
+    def test_2_39_10_is_greater_than_2_39_9(self):
+        # The comparison is between integers, not strings: "2.39.9" sorts
+        # above "2.39.10" lexicographically, which is the mistake to rule out.
         self.assertGreater(cu.extract_semver("2.39.10"),
                            cu.extract_semver("2.39.9"))
 
@@ -79,19 +78,19 @@ class TestExtractSemver(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────────────────
 class TestDetermineBump(unittest.TestCase):
 
-    def test_classificazione(self):
-        casi = [
+    def test_classification(self):
+        cases = [
             ((1, 0, 0), (2, 0, 0), "major", True),
             ((2, 33, 6), (2, 39, 10), "minor", False),
             ((1, 37, 1), (1, 37, 3), "patch", False),
             ((1, 37, 3), (1, 37, 3), "none", False),
-            ((1, 37, 3), (1, 37, 1), "none", False),   # a ritroso: nessun update
+            ((1, 37, 3), (1, 37, 1), "none", False),   # backwards: no update
         ]
-        for corrente, ultima, bump, major in casi:
-            with self.subTest(corrente=corrente, ultima=ultima):
-                self.assertEqual(cu.determine_bump(corrente, ultima), (bump, major))
+        for current, latest, bump, major in cases:
+            with self.subTest(current=current, latest=latest):
+                self.assertEqual(cu.determine_bump(current, latest), (bump, major))
 
-    def test_versione_non_confrontabile(self):
+    def test_non_comparable_version(self):
         self.assertEqual(cu.determine_bump((0, 0, 0), (1, 2, 3)), ("unknown", False))
         self.assertEqual(cu.determine_bump((1, 2, 3), (0, 0, 0)), ("unknown", False))
 
@@ -99,43 +98,42 @@ class TestDetermineBump(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────────────────
 class TestIsStableRelease(unittest.TestCase):
     """
-    Il filtro pre-release lavora sul TITOLO della release, che su diverse
-    forge è una frase e non un numero. Un match per sottostringa nuda su
-    "rc" o "dev" colpisce parole normali e fa sparire rilasci veri.
+    The pre-release filter works on the release TITLE, which on several forges
+    is a sentence rather than a number. A bare substring match on "rc" or
+    "dev" hits ordinary words and makes real releases disappear.
     """
 
-    def test_scarta_le_prerelease(self):
-        for titolo in ("v1.2.3-rc.1", "v1.2.3-RC2", "v2.0.0-beta", "v2.0.0-beta.3",
-                       "1.0-alpha", "nightly", "v3.0-preview", "v1.0.0rc1",
-                       "2.0.0-dev", "v4.0-TEST"):
-            with self.subTest(titolo=titolo):
-                self.assertFalse(cu.is_stable_release(titolo),
-                                 f"{titolo!r} doveva essere scartata")
+    def test_rejects_prereleases(self):
+        for title in ("v1.2.3-rc.1", "v1.2.3-RC2", "v2.0.0-beta", "v2.0.0-beta.3",
+                      "1.0-alpha", "nightly", "v3.0-preview", "v1.0.0rc1",
+                      "2.0.0-dev", "v4.0-TEST"):
+            with self.subTest(title=title):
+                self.assertFalse(cu.is_stable_release(title),
+                                 f"{title!r} should have been rejected")
 
-    def test_non_scarta_titoli_descrittivi_legittimi(self):
-        # Ognuna di queste contiene una keyword come sottostringa di una
-        # parola comune: architectu(rc)e, sou(rc)e, sea(rc)h, fo(rc)e,
-        # (dev)ice, la(test).
-        for titolo in ("v2.0.0 architecture rewrite",
-                       "Release 3.1 — source cleanup",
-                       "v1.0 search improvements",
-                       "v9.9 force push fix",
-                       "v4.0 device support",
-                       "v5.0 developer experience",
-                       "latest",
-                       "v6.0 greatest hits",
-                       "v7.0 performance"):
-            with self.subTest(titolo=titolo):
-                self.assertTrue(cu.is_stable_release(titolo),
-                                f"{titolo!r} è un rilascio stabile e non doveva "
-                                f"essere scartato")
+    def test_keeps_legitimate_descriptive_titles(self):
+        # Each of these contains a keyword as a substring of an ordinary word:
+        # architectu(rc)e, sou(rc)e, sea(rc)h, fo(rc)e, (dev)ice, la(test).
+        for title in ("v2.0.0 architecture rewrite",
+                      "Release 3.1 — source cleanup",
+                      "v1.0 search improvements",
+                      "v9.9 force push fix",
+                      "v4.0 device support",
+                      "v5.0 developer experience",
+                      "latest",
+                      "v6.0 greatest hits",
+                      "v7.0 performance"):
+            with self.subTest(title=title):
+                self.assertTrue(cu.is_stable_release(title),
+                                f"{title!r} is a stable release and should not "
+                                f"have been rejected")
 
 
 # ──────────────────────────────────────────────────────────────────────────
 class TestParseImage(unittest.TestCase):
 
-    def test_separazione_immagine_tag(self):
-        casi = {
+    def test_splits_image_and_tag(self):
+        cases = {
             "postgres:18-alpine":
                 ("postgres", "18-alpine", "18"),
             "codeberg.org/forgejo/forgejo:15.0.9":
@@ -147,76 +145,76 @@ class TestParseImage(unittest.TestCase):
             "redis:8-alpine":
                 ("redis", "8-alpine", "8"),
         }
-        for immagine, atteso in casi.items():
-            with self.subTest(immagine=immagine):
-                self.assertEqual(cu.parse_image(immagine), atteso)
+        for image, expected in cases.items():
+            with self.subTest(image=image):
+                self.assertEqual(cu.parse_image(image), expected)
 
-    def test_tag_assente_diventa_latest(self):
+    def test_missing_tag_becomes_latest(self):
         self.assertEqual(cu.parse_image("nginx"), ("nginx", "latest", "latest"))
 
-    def test_suffisso_numerico_non_viene_tagliato(self):
-        # "2025.01.20" non ha suffisso di build: va lasciato intero.
+    def test_numeric_suffix_is_not_stripped(self):
+        # "2025.01.20" has no build suffix: it must be left whole.
         self.assertEqual(cu.parse_image("app:2025.01.20")[2], "2025.01.20")
 
 
 # ──────────────────────────────────────────────────────────────────────────
-class TestSelezioneReleaseForgeAPI(unittest.TestCase):
+class TestForgeApiReleaseSelection(unittest.TestCase):
     """
-    La scelta deve dipendere dai numeri di versione, non dall'ordine in cui
-    la forge elenca i rilasci.
+    The choice must depend on version numbers, not on the order the forge
+    happens to list its releases in.
     """
 
-    def _chiama(self, releases, current="2.33.6",
-                repo_url="https://github.com/n8n-io/n8n"):
+    def _call(self, releases, current="2.33.6",
+              repo_url="https://github.com/n8n-io/n8n"):
         with mock.patch.object(cu.requests, "get",
                                return_value=fake_response(releases)):
             return cu.get_latest_from_forge_api(repo_url, "n8n-io", "n8n", current)
 
-    def test_ignora_l_ordine_dell_api(self):
-        # Caso reale del 2026-09-21: l'API di GitHub elencava 2.39.9 prima di
-        # 2.39.10, e prendere il primo elemento proponeva una versione già
-        # superata lo stesso giorno.
+    def test_ignores_api_ordering(self):
+        # Real case from 2026-09-21: the GitHub API listed 2.39.9 before
+        # 2.39.10, and taking the first element proposed a version that had
+        # already been superseded the same day.
         releases = [gh_release("n8n@2.39.9"), gh_release("n8n@2.39.10")]
-        self.assertEqual(self._chiama(releases)["version"], "n8n@2.39.10")
+        self.assertEqual(self._call(releases)["version"], "n8n@2.39.10")
 
-    def test_stesso_risultato_a_ordine_invertito(self):
+    def test_same_result_with_reversed_order(self):
         releases = [gh_release("n8n@2.39.10"), gh_release("n8n@2.39.9")]
-        self.assertEqual(self._chiama(releases)["version"], "n8n@2.39.10")
+        self.assertEqual(self._call(releases)["version"], "n8n@2.39.10")
 
-    def test_scarta_le_prerelease_anche_se_piu_alte(self):
-        # n8n marca l'intera linea 2.40.x come prerelease (canale `next`):
-        # il massimo per semver non deve saltarci sopra.
+    def test_rejects_prereleases_even_when_higher(self):
+        # n8n marks its whole 2.40.x line as prerelease (the `next` channel):
+        # picking the highest semver must not jump onto it.
         releases = [gh_release("n8n@2.40.5", prerelease=True),
                     gh_release("n8n@2.40.4", prerelease=True),
                     gh_release("n8n@2.39.10"),
                     gh_release("n8n@2.39.9")]
-        self.assertEqual(self._chiama(releases)["version"], "n8n@2.39.10")
+        self.assertEqual(self._call(releases)["version"], "n8n@2.39.10")
 
-    def test_resta_sulla_major_corrente(self):
-        # Forgejo pubblica 15.x e 16.x lo stesso giorno: chi è su 15 non deve
-        # essere spinto sulla major successiva.
+    def test_stays_on_the_current_major(self):
+        # Forgejo publishes 15.x and 16.x on the same day: someone on 15 must
+        # not be pushed onto the next major.
         releases = [gh_release("v16.0.5"), gh_release("v15.0.9"),
                     gh_release("v16.0.4"), gh_release("v15.0.8")]
-        got = self._chiama(releases, current="15.0.6",
-                           repo_url="https://codeberg.org/forgejo/forgejo")
+        got = self._call(releases, current="15.0.6",
+                         repo_url="https://codeberg.org/forgejo/forgejo")
         self.assertEqual(got["version"], "v15.0.9")
 
-    def test_ignora_le_bozze(self):
+    def test_ignores_drafts(self):
         releases = [gh_release("n8n@2.99.0", draft=True), gh_release("n8n@2.39.10")]
-        self.assertEqual(self._chiama(releases)["version"], "n8n@2.39.10")
+        self.assertEqual(self._call(releases)["version"], "n8n@2.39.10")
 
-    def test_i_tag_mobili_non_vincono_sui_numeri(self):
-        # n8n pubblica anche release chiamate "stable" e "latest". Si
-        # estraggono come (0,0,0) e non devono mai essere restituite come
-        # se fossero un numero di versione.
+    def test_moving_tags_never_beat_numbers(self):
+        # n8n also publishes releases named "stable" and "latest". They
+        # extract as (0,0,0) and must never be returned as if they were a
+        # version number.
         releases = [gh_release("stable"), gh_release("latest"),
                     gh_release("n8n@2.39.10")]
-        self.assertEqual(self._chiama(releases)["version"], "n8n@2.39.10")
+        self.assertEqual(self._call(releases)["version"], "n8n@2.39.10")
 
-    def test_errore_esplicito_se_non_c_e_nulla_di_stabile(self):
+    def test_raises_when_nothing_stable_exists(self):
         releases = [gh_release("v1.0.0-rc.1", prerelease=True)]
         with self.assertRaises(ValueError):
-            self._chiama(releases, current="1.0.0")
+            self._call(releases, current="1.0.0")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -228,67 +226,65 @@ ATOM = """<?xml version="1.0" encoding="UTF-8"?>
 </feed>"""
 
 
-class TestSelezioneReleaseRSS(unittest.TestCase):
-    """Il fallback RSS deve seguire la stessa regola del percorso API."""
+class TestRssReleaseSelection(unittest.TestCase):
+    """The RSS fallback must follow the same rule as the API path."""
 
-    def _chiama(self, a, b, c, current="2.33.6"):
+    def _call(self, a, b, c, current="2.33.6"):
         xml = ATOM.format(a=a, b=b, c=c)
         with mock.patch.object(cu.requests, "get",
                                return_value=fake_response(None, text=xml)):
-            return cu.get_latest_from_rss("https://esempio/releases.atom", current)
+            return cu.get_latest_from_rss("https://example/releases.atom", current)
 
-    def test_prende_la_versione_piu_alta_non_la_prima(self):
-        # L'ordine di un feed Atom riflette la data, non la versione.
-        self.assertEqual(self._chiama("2.39.9", "2.39.10", "2.38.0"), "2.39.10")
+    def test_picks_the_highest_not_the_first(self):
+        # The order of an Atom feed reflects dates, not versions.
+        self.assertEqual(self._call("2.39.9", "2.39.10", "2.38.0"), "2.39.10")
 
-    def test_scarta_le_prerelease(self):
-        self.assertEqual(self._chiama("2.40.0-rc.1", "2.39.10", "2.39.9"), "2.39.10")
+    def test_rejects_prereleases(self):
+        self.assertEqual(self._call("2.40.0-rc.1", "2.39.10", "2.39.9"), "2.39.10")
 
-    def test_resta_sulla_major_corrente(self):
-        self.assertEqual(self._chiama("3.0.0", "2.39.10", "2.39.9"), "2.39.10")
+    def test_stays_on_the_current_major(self):
+        self.assertEqual(self._call("3.0.0", "2.39.10", "2.39.9"), "2.39.10")
 
-    def test_errore_se_il_feed_non_ha_nulla_di_utile(self):
+    def test_raises_when_the_feed_has_nothing_usable(self):
         with self.assertRaises(ValueError):
-            self._chiama("nightly", "v1.0-beta", "alpha-2")
+            self._call("nightly", "v1.0-beta", "alpha-2")
 
 
 # ──────────────────────────────────────────────────────────────────────────
-class TestCoerenzaMetadata(unittest.TestCase):
+class TestMetadataConsistency(unittest.TestCase):
     """
-    services_metadata.json è la sorgente da cui il checker capisce cosa
-    tracciare: se si corrompe o perde un campo, il servizio smette di essere
-    controllato senza che nulla lo segnali.
+    services_metadata.json is where the checker learns what to track: if it
+    gets corrupted or loses a field, a service silently stops being checked.
     """
 
     def setUp(self):
         with open(os.path.join(BASE, "services_metadata.json")) as f:
             self.meta = json.load(f)
 
-    def test_ogni_servizio_ha_criticality_e_stack(self):
-        for nome, voce in self.meta.items():
-            with self.subTest(servizio=nome):
-                self.assertIn("criticality", voce)
-                self.assertIn("stack", voce)
+    def test_every_service_has_criticality_and_stack(self):
+        for name, entry in self.meta.items():
+            with self.subTest(service=name):
+                self.assertIn("criticality", entry)
+                self.assertIn("stack", entry)
 
-    def test_criticality_fra_i_valori_previsti(self):
-        ammessi = {"critical", "medium", "low", "stateless", "dependency"}
-        for nome, voce in self.meta.items():
-            with self.subTest(servizio=nome):
-                self.assertIn(voce["criticality"], ammessi)
+    def test_criticality_is_one_of_the_known_values(self):
+        allowed = {"critical", "medium", "low", "stateless", "dependency"}
+        for name, entry in self.meta.items():
+            with self.subTest(service=name):
+                self.assertIn(entry["criticality"], allowed)
 
-    def test_chi_ha_un_repo_ha_di_che_interrogarlo(self):
-        # Senza `repo` né la coppia owner/name il servizio risulta tracciato
-        # ma non controllabile: è il caso che passa inosservato.
-        for nome, voce in self.meta.items():
-            if voce.get("criticality") in ("stateless", "dependency"):
+    def test_tracked_services_have_something_to_query(self):
+        # Without `repo` or the owner/name pair a service ends up tracked but
+        # uncheckable, which is the case that goes unnoticed.
+        for name, entry in self.meta.items():
+            if entry.get("criticality") in ("stateless", "dependency"):
                 continue
-            with self.subTest(servizio=nome):
-                ha_repo = bool(voce.get("repo"))
-                ha_coppia = bool(voce.get("github_owner")) and \
-                            bool(voce.get("github_repo_name"))
-                self.assertTrue(ha_repo or ha_coppia,
-                                f"{nome} è tracciato ma non ha un repository "
-                                f"da interrogare")
+            with self.subTest(service=name):
+                has_repo = bool(entry.get("repo"))
+                has_pair = bool(entry.get("github_owner")) and \
+                           bool(entry.get("github_repo_name"))
+                self.assertTrue(has_repo or has_pair,
+                                f"{name} is tracked but has no repository to query")
 
 
 if __name__ == "__main__":

@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  healthcheck.sh — verifica che lo stack risponda davvero     ║
+# ║  healthcheck.sh — check that the stack actually responds     ║
 # ╚══════════════════════════════════════════════════════════════╝
 #
-# Pensato per essere eseguito PRIMA e DOPO ogni aggiornamento: `docker compose
-# ps` dice solo che un processo è vivo, non che il servizio funziona. Qui si
-# interroga l'endpoint di salute di ognuno e si contano le righe nei database,
-# così un confronto prima/dopo mostra se un dato è sparito durante una
-# migrazione.
+# Meant to be run BEFORE and AFTER every upgrade: `docker compose ps` only
+# reports that a process is alive, not that the service works. This queries
+# each service's health endpoint and counts rows in the databases, so a
+# before/after comparison shows whether a migration lost anything.
 #
-# Uso:
-#   ./scripts/healthcheck.sh              # tutto
-#   ./scripts/healthcheck.sh n8n forgejo  # solo alcuni servizi
+# Usage:
+#   ./scripts/healthcheck.sh              # everything
+#   ./scripts/healthcheck.sh n8n forgejo  # selected services only
 #
-# Exit 0 se ogni controllo passa, 1 altrimenti (utilizzabile in uno script di
-# aggiornamento come condizione di rollback).
+# Exits 0 when every check passes, 1 otherwise, so an upgrade script can use
+# it as a rollback condition.
 
 set -uo pipefail
 
-# Tutti i percorsi sotto (.env, docker compose) sono relativi alla root del
-# repository: se il cd fallisse, i controlli girerebbero altrove e
-# riporterebbero risultati privi di senso invece di fallire.
+# Everything below (.env, docker compose) is relative to the repository root:
+# if the cd failed, the checks would run somewhere else and report meaningless
+# results instead of failing.
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
-# Il .env NON viene sourcato: è un file di dati, non uno script. Un valore
-# legittimo con spazi dentro (una app-password Gmail, per dire) farebbe
-# eseguire alla shell la seconda parola come comando. Qui si leggono solo le
-# chiavi che servono, e solo se il valore ha la forma attesa.
+# The .env is NOT sourced: it is a data file, not a script. A legitimate
+# value containing spaces (an email provider app password, say) would make the
+# shell execute its second word as a command. Only the keys needed here are
+# read, one at a time.
 env_get() {
   local key=$1 def=${2:-} val
   [ -f .env ] || { printf '%s' "$def"; return; }
@@ -53,36 +52,36 @@ bad()   { printf "  \033[31m✘\033[0m %-34s %s\n" "$1" "${2:-}"; FAIL=$((FAIL+1
 title() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
 SEL=("$@")
-# Vero se non è stato passato alcun filtro, o se il servizio è fra quelli chiesti.
+# True when no filter was given, or when this service is among those asked for.
 want() {
   [ "${#SEL[@]}" -eq 0 ] && return 0
   local a; for a in "${SEL[@]}"; do [ "$a" = "$1" ] && return 0; done
   return 1
 }
 
-# http <etichetta> <url> [codice-atteso] [regex-che-il-body-deve-contenere]
-# Il controllo sul body esiste perché diversi servizi rispondono 200 da un
-# frontend anche quando il backend dietro è rotto.
+# http <label> <url> [expected-code] [regex the body must contain]
+# The body check exists because several services answer 200 from a frontend
+# even when the backend behind it is broken.
 http() {
   local label=$1 url=$2 want_code=${3:-200} pat=${4:-} body code
   body=$(curl -s -m 8 -w $'\n%{http_code}' "$url" 2>/dev/null)
   code=$(printf '%s' "$body" | tail -n1)
   body=$(printf '%s' "$body" | sed '$d')
-  if [ "$code" != "$want_code" ]; then bad "$label" "HTTP $code (atteso $want_code)"; return 1; fi
+  if [ "$code" != "$want_code" ]; then bad "$label" "HTTP $code (expected $want_code)"; return 1; fi
   if [ -n "$pat" ] && ! grep -qE "$pat" <<<"$body"; then
-    bad "$label" "HTTP $code ma il body non contiene /$pat/"; return 1
+    bad "$label" "HTTP $code but the body does not contain /$pat/"; return 1
   fi
   ok "$label" "HTTP $code"
 }
 
-# Nome del container di un servizio compose, senza assumere il prefisso di progetto.
+# Container id of a compose service, without assuming the project prefix.
 cid() { docker compose ps -q "$1" 2>/dev/null | head -1; }
 
-# state <servizio> — running, e healthy se il servizio dichiara una healthcheck.
+# state <service> — running, and healthy when the service declares a healthcheck.
 state() {
   local svc=$1 id st
   id=$(cid "$svc")
-  if [ -z "$id" ]; then bad "$svc" "nessun container"; return 1; fi
+  if [ -z "$id" ]; then bad "$svc" "no container"; return 1; fi
   st=$(docker inspect -f '{{.State.Status}}{{if .State.Health}}/{{.State.Health.Status}}{{end}}' "$id" 2>/dev/null)
   case "$st" in
     running|running/healthy) ok "$svc" "$st" ;;
@@ -90,13 +89,13 @@ state() {
   esac
 }
 
-title "Container"
+title "Containers"
 for s in nginx homepage cloudflared ntfy forgejo n8n n8n-worker n8n-db n8n-redis \
          syncthing ollama excalidraw vaultwarden; do
   want "$s" && state "$s"
 done
 
-title "Endpoint di salute"
+title "Health endpoints"
 want nginx       && http "nginx (admin)"     "http://127.0.0.1:${NGINX_ADMIN_PORT}/"                  200
 want homepage    && http "homepage"          "http://127.0.0.1:${HOMEPAGE_PORT}/"                   200
 want forgejo     && http "forgejo"           "http://127.0.0.1:${FORGEJO_HTTP_PORT}/api/healthz"    200 '"status": *"pass"'
@@ -108,34 +107,34 @@ want excalidraw  && http "excalidraw"        "http://127.0.0.1:${EXCALIDRAW_PORT
 want vaultwarden && http "vaultwarden"       "http://127.0.0.1:${VAULTWARDEN_PORT}/alive"           200
 want syncthing   && http "syncthing"         "http://127.0.0.1:${SYNCTHING_GUI_PORT}/rest/noauth/health" 200 '"status": *"OK"'
 
-title "Persistenza"
+title "Persistence"
 if want n8n-db; then
   if docker compose exec -T n8n-db pg_isready -U "${N8N_DB_USER}" >/dev/null 2>&1; then
-    ok "postgres accetta connessioni"
-  else bad "postgres accetta connessioni"; fi
+    ok "postgres accepting connections"
+  else bad "postgres accepting connections"; fi
 fi
 if want n8n-redis; then
   if [ "$(docker compose exec -T n8n-redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]; then
-    ok "redis risponde"
-  else bad "redis risponde"; fi
+    ok "redis responding"
+  else bad "redis responding"; fi
 fi
 
-# Questi numeri non sono un controllo di salute ma un'impronta: confrontarli
-# prima e dopo un aggiornamento è il modo più diretto per accorgersi che una
-# migrazione ha perso qualcosa.
+# These numbers are not a health check but a fingerprint: comparing them
+# before and after an upgrade is the most direct way to notice that a
+# migration lost something.
 if want n8n; then
-  title "Impronta dati n8n (confrontare prima/dopo l'aggiornamento)"
+  title "n8n data fingerprint (compare before/after an upgrade)"
   q() { docker compose exec -T n8n-db psql -U "${N8N_DB_USER}" -d "${N8N_DB_NAME}" -tAc "$1" 2>/dev/null | tr -d '\r'; }
   WF=$(q "select count(*) from workflow_entity")
   if [ -n "$WF" ]; then
-    ok "workflow"            "$WF"
-    ok "workflow attivi"     "$(q "select count(*) from workflow_entity where active")"
-    ok "credenziali"         "$(q "select count(*) from credentials_entity")"
-    ok "migrazioni applicate" "$(q "select count(*) from migrations")"
+    ok "workflows"           "$WF"
+    ok "active workflows"      "$(q "select count(*) from workflow_entity where active")"
+    ok "credentials"         "$(q "select count(*) from credentials_entity")"
+    ok "migrations applied"  "$(q "select count(*) from migrations")"
   else
-    bad "lettura del database n8n" "nessuna risposta"
+    bad "reading the n8n database" "no response"
   fi
 fi
 
-printf "\n\033[1mRisultato:\033[0m %d superati, %d falliti\n" "$PASS" "$FAIL"
+printf "\n\033[1mResult:\033[0m %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

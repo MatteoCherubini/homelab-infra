@@ -63,8 +63,8 @@ ssh_torre() {
 case "${1:-}" in
 
   torre-down)
-    notify "Blackout — torre in spegnimento" \
-           "Corrente assente da >60s. Torre si spegne ora; nexus resta su a batteria." \
+    notify "Power cut — shutting torre down" \
+           "Mains down for >60s. torre is shutting down now; nexus stays up on battery." \
            "urgent" "electric_plug"
     log "on battery -> emergency shutdown of torre"
     if ssh_torre torre-emergency-shutdown; then
@@ -75,8 +75,8 @@ case "${1:-}" in
     ;;
 
   nexus-down)
-    notify "Batteria scarica — nexus in spegnimento" \
-           "LOWBATT raggiunto. Compose down, poi halt. Tutto riparte da solo con la corrente." \
+    notify "Battery low — shutting nexus down" \
+           "LOWBATT reached. Compose down, then halt. Everything comes back by itself on mains restore." \
            "urgent" "battery"
     log "low battery -> stopping stacks and powering off nexus"
     if systemctl list-unit-files 2>/dev/null | grep -q "^${COMPOSE_UNIT}"; then
@@ -90,14 +90,14 @@ case "${1:-}" in
     ;;
 
   notify-onbatt)
-    notify "Blackout — passaggio a batteria" \
-           "Corrente assente. Torre si spegne tra ~60s; nexus resta su a batteria." \
+    notify "Power cut — running on battery" \
+           "Mains down. torre shuts down in ~60s; nexus stays up on battery." \
            "urgent" "electric_plug"
     ;;
 
   notify-online)
-    notify "Corrente ripristinata" \
-           "Alimentazione tornata. Torre riparte da sola al prossimo ingest (WoL)." \
+    notify "Mains restored" \
+           "Power is back. torre wakes itself on the next ingest (WoL)." \
            "default" "white_check_mark"
     ;;
 
