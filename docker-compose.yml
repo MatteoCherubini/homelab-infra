@@ -1,11 +1,11 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║              HOMELAB – Docker Compose Root                  ║
 # ║                                                              ║
-# ║  Per disabilitare uno stack: commenta la riga include.       ║
+# ║  To disable a stack: comment out its include line.           ║
 # ║                                                              ║
-# ║  Uso:                                                        ║
-# ║    docker compose up -d              (tutto)                 ║
-# ║    docker compose up -d nextcloud    (singolo servizio)      ║
+# ║  Usage:                                                      ║
+# ║    docker compose up -d              (everything)            ║
+# ║    docker compose up -d forgejo      (a single service)      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 include:
@@ -15,7 +15,7 @@ include:
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
-  # - stacks/ups/compose.yml    # Abilitare dopo setup fisico UPS
+  # - stacks/ups/compose.yml    # Enable once the UPS is physically installed
 
 networks:
   homelab:
