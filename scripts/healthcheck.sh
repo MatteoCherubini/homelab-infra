@@ -18,7 +18,10 @@
 
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# Tutti i percorsi sotto (.env, docker compose) sono relativi alla root del
+# repository: se il cd fallisse, i controlli girerebbero altrove e
+# riporterebbero risultati privi di senso invece di fallire.
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 # Il .env NON viene sourcato: è un file di dati, non uno script. Un valore
 # legittimo con spazi dentro (una app-password Gmail, per dire) farebbe

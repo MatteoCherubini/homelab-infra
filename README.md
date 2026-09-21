@@ -50,7 +50,9 @@ the thing still works after you have changed it.
 │   ├── init.sh              # first-run setup: .env, directories, permissions
 │   ├── check-env.sh         # .env vs .env.example drift detection
 │   ├── check_updates.py     # release checker + service manifest generator
-│   └── healthcheck.sh       # end-to-end verification
+│   ├── healthcheck.sh       # live verification of the running stack
+│   └── run-tests.sh         # offline suite: lint, syntax, secrets, unit tests
+├── tests/                   # unit tests (stdlib unittest, no dependencies)
 ├── workflows/               # n8n workflow definitions, exported as JSON
 ├── UPS/                     # ordered shutdown orchestration (NUT + systemd + SSH)
 └── services_metadata.json   # per-service criticality and upstream repository
@@ -102,6 +104,7 @@ make down           Stop everything
 make ps             Status of running services
 make logs           Live logs
 
+make test           Offline suite: lint, syntax, JSON/YAML, secrets, unit tests
 make check          Prerequisites and compose config validity
 make check-env      .env vs .env.example drift
 make verify         Declared image tags vs running containers
@@ -113,23 +116,54 @@ make check-updates  Generate the service manifest and check for new releases
 
 ---
 
-## Verifying that it actually works
+## Testing and verification
+
+Two layers, deliberately separate.
+
+### `make test` — offline, no Docker
+
+Runs without a network, without containers and without a `.env`, so it works
+on a freshly cloned laptop and in CI, and can be run *before* touching the
+server rather than after. It covers:
+
+- shell syntax and `shellcheck` at `warning` severity — behavioural defects
+  only, not style, because a gate that reports everything stops being read;
+- Python syntax, and unit tests for `check_updates.py`;
+- validity of `services_metadata.json` and the exported n8n workflows;
+- every compose file parses, and every stack the root file includes exists —
+  a bad include path breaks *every* compose command, not just that stack;
+- no private key or JWT in any tracked file, and `.env` not tracked.
+
+Checks that cannot run degrade to an explicit skip rather than a silent pass.
+A test that reports success without having executed is worse than no test,
+because it removes the reason to look elsewhere.
+
+The unit tests exist for one reason: `check_updates.py` fails *silently*. If
+release selection wrongly discards a valid release, nothing errors — the
+checker reports "no updates", which is indistinguishable from there genuinely
+being none, and the host can sit on a vulnerable version for months. Each test
+pins one concrete way of failing that way, including two found in this
+codebase: picking whichever release the forge API happened to list first, and
+a pre-release filter matching `rc` inside `architecture`, `source` and
+`force`, and `dev` inside `device`.
+
+### `make healthcheck` — against the running system
 
 `docker compose ps` reports that a process is alive, which is not the same as
-the service working. `make healthcheck` queries each service's health endpoint,
-and where a service returns something meaningful it asserts on the response
-body too — Nginx and Forgejo both answer `200` from the frontend while the
-backend behind them is broken.
+the service working. This queries each service's health endpoint and, where a
+service returns something meaningful, asserts on the response body too —
+Nginx and Forgejo both answer `200` from the frontend while the backend behind
+them is broken.
 
 It also prints a fingerprint of the n8n database: workflow count, active
-workflows, credentials, migrations applied. Comparing that fingerprint before
-and after an upgrade is the most direct way to notice that a migration lost
-something. The script exits non-zero on the first failure, so it can gate a
-rollback.
+workflows, credentials, migrations applied. Comparing that fingerprint on both
+sides of an upgrade is the most direct way to notice that a migration lost
+something. It exits non-zero on the first failure, so it can gate a rollback.
 
 ```bash
-make healthcheck              # everything
-./scripts/healthcheck.sh n8n  # one service
+make test                     # offline
+make healthcheck              # live, everything
+./scripts/healthcheck.sh n8n  # live, one service
 ```
 
 ---
