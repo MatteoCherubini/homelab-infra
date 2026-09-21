@@ -142,3 +142,14 @@ an upgrade.
 **Compose rather than Kubernetes.** The workload is a single host with a GPU.
 Kubernetes would add an orchestration layer whose failure modes are harder to
 debug than the problems it would solve here.
+
+---
+
+## License
+
+[MIT](LICENSE). Take what is useful.
+
+One thing to read rather than skim: this repository contains a runbook that
+halts machines on mains failure, shutdown scripts, and the security posture of
+a password server. The warranty disclaimer is not boilerplate here — none of
+it has been tested anywhere but on the one host it was written for.
