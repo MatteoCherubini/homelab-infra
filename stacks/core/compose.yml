@@ -1,4 +1,5 @@
-# ── CORE: Nginx Proxy Manager, Homepage, Cloudflared ──
+# ── CORE: Nginx Proxy Manager, Homepage, Cloudflared, ntfy ──
+# docs/stacks/core.md
 
 services:
   nginx:

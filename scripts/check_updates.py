@@ -361,7 +361,7 @@ def _resolve_forge(repo_url: str) -> dict:
         if entry["host"] == host:
             return entry
 
-    # Fallback: qualsiasi dominio sconosciuto → assume Gitea/Forgejo API
+    # Fallback: any unknown host is assumed to expose a Gitea/Forgejo API
     return {
         "host":    host,
         "api_tpl": GITEA_FALLBACK["api_tpl"].format(
@@ -512,7 +512,7 @@ def check_updates(tracked_services: list) -> tuple:
       is_prerelease, release_label ("stable"|"unverified"|"unknown"),
       source_method ("forge_api"|"rss")
     oppure:
-      error_detail, checked_at     (in caso di errore)
+      error_detail, checked_at     (on failure)
     """
     updates   = []
     errors    = []
@@ -697,9 +697,10 @@ def main():
         print(json.dumps(output, ensure_ascii=False))
 
     except subprocess.CalledProcessError as e:
-        # docker compose config ha fallito
+        # `docker compose config` itself failed: without it there is no
+        # manifest to build, so this is fatal rather than a per-service error.
         print(json.dumps({
-            "fatal":              f"docker compose config fallito: {e.stderr.strip()}",
+            "fatal":              f"docker compose config failed: {e.stderr.strip()}",
             "manifest":           [], "updates": [], "errors": [],
             "unchanged":          [], "untracked_warnings": [],
             "run_at":             run_at,

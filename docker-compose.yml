@@ -1,5 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║              HOMELAB – Docker Compose Root                  ║
+# ║              Architecture: docs/architecture.md             ║
 # ║                                                              ║
 # ║  To disable a stack: comment out its include line.           ║
 # ║                                                              ║
@@ -15,7 +16,6 @@ include:
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
-  # - stacks/ups/compose.yml    # Enable once the UPS is physically installed
 
 networks:
   homelab:

@@ -16,7 +16,8 @@
 # Security: the ntfy token lives in /etc/nut/kg-ups.env (chmod 0600, owned by root).
 #   printf 'NTFY_TOKEN=tk_...\n' | sudo tee /etc/nut/kg-ups.env && sudo chmod 0600 /etc/nut/kg-ups.env
 #
-# Install ON NEXUS: install -m 0755 kg-ups-handler /usr/local/bin/kg-ups-handler
+# Install ON THE SERVER: install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
+# Full runbook: docs/stacks/ups.md
 # Called as:  kg-ups-handler <event>     (torre-down | nexus-down | notify-onbatt | notify-online)
 # Test (no shutdown):  KG_UPS_DRYRUN=1 kg-ups-handler torre-down
 # =============================================================================
