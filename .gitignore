@@ -1,16 +1,17 @@
-# Dati e database — MAI nel repo
+# Data and databases — NEVER in the repository
 data/
 media/
 
-# Secrets — tutto ciò che assomiglia a un .env resta fuori, tranne il template.
-# Regola volutamente larga: .env.backup e .env.save (creati a mano durante le
-# manutenzioni) sfuggivano a un pattern piu' stretto e contengono segreti veri.
+# Secrets — anything that looks like a .env stays out, except the template.
+# The rule is deliberately broad: .env.backup and .env.save, written by hand
+# during past maintenance, slipped past a narrower pattern and hold real
+# credentials.
 .env*
 !.env.example
 
-# Stack locali: servizi che girano solo su questa macchina (esperimenti,
-# progetti separati) si dichiarano qui invece che in un branch dedicato.
-# Vedi docker-compose.override.yml.example.
+# Local stacks: services that run on this machine only (experiments, separate
+# projects) are declared here rather than in a dedicated branch.
+# See docker-compose.override.yml.example.
 docker-compose.override.yml
 
 # OS

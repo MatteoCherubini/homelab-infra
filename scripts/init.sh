@@ -6,16 +6,16 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
 echo "══════════════════════════════════════════"
-echo "  Homelab — Inizializzazione"
+echo "  Homelab — Initialisation"
 echo "══════════════════════════════════════════"
 
 # ── .env ──────────────────────────────────────────────────────
 if [ ! -f .env ]; then
     cp .env.example .env
-    echo "✅ .env creato da .env.example"
-    echo "⚠️  MODIFICA le password prima di avviare!"
+    echo "✅ .env created from .env.example"
+    echo "⚠️  Set every password before starting!"
 else
-    echo "ℹ️  .env già presente"
+    echo "ℹ️  .env already present"
 fi
 
 source .env
@@ -27,7 +27,7 @@ echo ""
 echo "📁 DATA_ROOT: $DATA"
 echo "📁 MEDIA_ROOT: $MEDIA"
 
-# ── Directory dati (solo servizi attivi) ──────────────────────
+# ── Data directories (enabled services only) ──────────────────
 dirs=(
     # Core
     "$DATA/nginx/data" "$DATA/nginx/letsencrypt"
@@ -36,7 +36,7 @@ dirs=(
     "$DATA/ollama/data"
     # Automation
     "$DATA/n8n/db" "$DATA/n8n/data" "$DATA/n8n/redis"
-    # UPS (preparato ma non attivo — futuro, via n8n)
+    # UPS (prepared, not enabled yet)
     "$DATA/nut/etc"
     # Media (RAID)
     "$MEDIA/forgejo/data"
@@ -45,40 +45,40 @@ dirs=(
 for d in "${dirs[@]}"; do
     mkdir -p "$d"
 done
-echo "✅ Directory create"
+echo "✅ Directories created"
 
-# ── Permessi ──────────────────────────────────────────────────
+# ── Permissions ───────────────────────────────────────────────
 echo ""
-echo "🔑 Fix permessi..."
+echo "🔑 Fixing permissions..."
 
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
-# n8n gira come UID del .env (default 1000)
+# n8n runs as the UID from .env (default 1000)
 chown -R "$PUID:$PGID" "$DATA/n8n/data" 2>/dev/null || true
 
-echo "✅ Permessi applicati"
+echo "✅ Permissions applied"
 
 # ── Kernel tuning (Redis n8n) ─────────────────────────────────
 echo ""
 echo "🔧 Kernel tuning..."
 
 if [ "$(cat /proc/sys/vm/overcommit_memory 2>/dev/null)" != "1" ]; then
-    echo "  ⚠️  Redis warning fix: esegui come root:"
+    echo "  ⚠️  Redis warning fix — run as root:"
     echo "     echo 'vm.overcommit_memory=1' | sudo tee -a /etc/sysctl.conf"
     echo "     sudo sysctl -p"
 else
-    echo "  ✅ vm.overcommit_memory già configurato"
+    echo "  ✅ vm.overcommit_memory already set"
 fi
 
-# ── Riepilogo ─────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════"
-echo "  Inizializzazione completata!"
+echo "  Initialisation complete"
 echo "══════════════════════════════════════════"
 echo ""
-echo "Prossimi passi:"
-echo "  1. nano .env              → configura password e path"
-echo "  2. make check             → verifica config"
-echo "  3. make up                → avvia tutto"
+echo "Next steps:"
+echo "  1. \$EDITOR .env          → set passwords and paths"
+echo "  2. make check             → validate the configuration"
+echo "  3. make up                → start everything"
 echo "══════════════════════════════════════════"

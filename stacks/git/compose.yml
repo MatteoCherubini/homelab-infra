@@ -11,9 +11,9 @@ services:
     environment:
       USER_UID: "${PUID:-1000}"
       USER_GID: "${PGID:-1000}"
-      # Hostname pubblico: vive nel .env, non qui. Un compose file committato
-      # che contiene il dominio reale non è riusabile da nessun altro, e in un
-      # repository pubblico lo pubblica.
+      # Public hostname: it belongs in .env, not here. A committed compose
+      # file carrying the real domain is unusable by anyone else, and in a
+      # public repository it publishes that domain.
       FORGEJO__server__ROOT_URL: "https://${FORGEJO_DOMAIN}/"
       FORGEJO__server__DOMAIN: "${FORGEJO_DOMAIN}"
       FORGEJO__server__SSH_DOMAIN: "${FORGEJO_DOMAIN}"

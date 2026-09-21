@@ -1,11 +1,11 @@
 # 🟢 Homelab UPS Orchestration
 
-> Spegnimento ordinato hypervisor → server su blackout, con ritorno automatico.
-> Basato su **NUT** (Network UPS Tools), **systemd**, **SSH forced-command** e **Docker Compose**.
+> Ordered shutdown, hypervisor → server, on mains failure, with automatic recovery.
+> Built on **NUT** (Network UPS Tools), **systemd**, an **SSH forced command** and **Docker Compose**.
 
 ---
 
-## 📐 Architettura
+## 📐 Architecture
 
 ```
 ┌─────────────────┐      USB       ┌─────────────────┐
@@ -30,36 +30,36 @@
                                    └─────────────────┘
 ```
 
-### Strategia di spegnimento
+### Shutdown strategy
 
-| Nodo | Carico | Tempo spegnimento | Decisione |
-|------|--------|-------------------|-----------|
-| **hypervisor** (GPU) | fino a ~400W | lento (guest → host) | **giù subito**, a `ONBATT + 60s` |
-| **server** | ~80W | veloce | **resta su**, giù a `LOWBATT` |
+| Node | Load | Shutdown time | Decision |
+|------|------|---------------|----------|
+| **hypervisor** (GPU) | up to ~400W | slow (guests → host) | **goes down first**, at `ONBATT + 60s` |
+| **server** | ~80W | fast | **stays up**, goes down at `LOWBATT` |
 
-I 60 secondi di tolleranza evitano falsi positivi sui lampi di rete.
+The 60-second grace period avoids reacting to brief mains flickers.
 
 ---
 
 ## 🔌 Hardware checklist
 
-| Componente | Stato | Nota |
-|------------|-------|------|
-| UPS Green Cell PowerProof 2000VA | ✅ | Driver `nutdrv_qx`, protocollo `q1` |
-| server (server principale) | ✅ | Collegato a Schuko |
-| hypervisor (Proxmox/GPU) | ✅ | Collegato a Schuko |
-| Switch di rete | ✅ | **Deve** essere sull'UPS |
-| Modem/ONT | ⚠️ opz. | Serve per notifiche ntfy durante blackout |
-| BIOS server: "Power On after AC loss" | ✅ | ON |
-| BIOS hypervisor: "Stay Off after AC loss" | ✅ | ON + WoL da S5 |
+| Component | Status | Note |
+|-----------|--------|------|
+| Green Cell PowerProof 2000VA UPS | ✅ | `nutdrv_qx` driver, `q1` protocol |
+| server (main server) | ✅ | On the Schuko outlet |
+| hypervisor (Proxmox/GPU) | ✅ | On the Schuko outlet |
+| Network switch | ✅ | **Must** be on the UPS |
+| Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
+| server BIOS: "Power On after AC loss" | ✅ | ON |
+| hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
 
-> ⚠️ **Senza lo switch sull'UPS**, server non può comandare lo spegnimento di hypervisor durante il blackout.
+> ⚠️ **Without the switch on the UPS**, server cannot tell hypervisor to shut down during an outage.
 
 ---
 
-## ⚙️ NUT su server (primary)
+## ⚙️ NUT on server (primary)
 
-### Dipendenze
+### Dependencies
 
 ```bash
 sudo apt install nut libusb-1.0-0-dev
@@ -89,7 +89,7 @@ pollinterval = 2
     default.output.voltage.nominal = 230.0
 ```
 
-> `runtimecal` è calibrata a carichi 4-8% (~50-100W). Con hypervisor accesa (~33% = ~400W) la stima `battery.runtime` è **ottimista e inaffidabile** — la logica di spegnimento si basa sul tempo da `ONBATT`, non sul runtime.
+> `runtimecal` is calibrated at 4–8% load (~50–100W). With hypervisor running (~33% = ~400W) the `battery.runtime` estimate is **optimistic and unreliable** — the shutdown logic keys off time since `ONBATT`, not off runtime.
 
 ### `/etc/nut/nut.conf`
 
@@ -107,14 +107,14 @@ LISTEN 127.0.0.1 3493
 
 ```ini
 [upsmon]
-    password = <PASSWORD_FORTE>
+    password = <STRONG_PASSWORD>
     upsmon master
 ```
 
 ### `/etc/nut/upsmon.conf`
 
 ```ini
-MONITOR server-ups@localhost 1 upsmon <PASSWORD_FORTE> master
+MONITOR server-ups@localhost 1 upsmon <STRONG_PASSWORD> master
 MINSUPPLIES 1
 POLLFREQ 5
 POLLFREQALERT 5
@@ -125,7 +125,7 @@ NOTIFYFLAG ONLINE  SYSLOG+WALL+EXEC
 NOTIFYFLAG LOWBATT SYSLOG+WALL+EXEC
 ```
 
-> `SHUTDOWNCMD` è gestito da **upsmon** (che si ri-eleva a root), non da upssched.
+> `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
 
 ### `/etc/nut/upssched.conf`
 
@@ -140,7 +140,7 @@ AT ONLINE  * CANCEL-TIMER hypervisor-down
 AT ONLINE  * EXECUTE      notify-online
 ```
 
-### Avvio
+### Startup
 
 ```bash
 sudo systemctl restart nut-server nut-monitor
@@ -151,9 +151,9 @@ sudo upsc server-ups@localhost
 
 ## 🔐 SSH nut → hypervisor (forced command)
 
-**Il problema:** `upssched` gira come utente `nut`, non root. Per spegnere hypervisor via SSH, `nut` deve avere una chiave e hypervisor deve accettarla tramite il wrapper `n8n-qm-wrap`.
+**The problem:** `upssched` runs as the `nut` user, not as root. To shut hypervisor down over SSH, `nut` needs a key and hypervisor must accept it through the `n8n-qm-wrap` wrapper.
 
-### Su server: genera chiave per `nut`
+### On server: generate a key for `nut`
 
 ```bash
 sudo mkdir -p /var/lib/nut/.ssh
@@ -163,9 +163,9 @@ sudo chmod 700 /var/lib/nut/.ssh
 sudo -u nut ssh-keygen -t ed25519 -f /var/lib/nut/.ssh/id_ed25519 -N "" -C "nut@server-ups"
 ```
 
-### Su hypervisor: aggiungi il case al wrapper
+### On hypervisor: add the case to the wrapper
 
-Modifica `/usr/local/sbin/n8n-qm-wrap` e inserisci **prima** del `*)`:
+Edit `/usr/local/sbin/n8n-qm-wrap` and insert this **before** the `*)` branch:
 
 ```bash
   "hypervisor-emergency-shutdown"|"hypervisor-emergency-shutdown --dry-run")
@@ -177,45 +177,45 @@ Modifica `/usr/local/sbin/n8n-qm-wrap` e inserisci **prima** del `*)`:
     ;;
 ```
 
-### Su hypervisor: authorized_keys
+### On hypervisor: authorized_keys
 
-Aggiungi in `/root/.ssh/authorized_keys`:
+Add to `/root/.ssh/authorized_keys`:
 
 ```text
 command="/usr/local/sbin/n8n-qm-wrap",no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAAC3NzaC... nut@server-ups
 ```
 
-### Verifica
+### Verify
 
 ```bash
 sudo -u nut ssh -o ConnectTimeout=5 -o BatchMode=yes root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"
 ```
 
-Deve restituire il dry-run **senza** `unauthorized command`.
+It must print the dry-run output **without** `unauthorized command`.
 
 ---
 
-## 🧠 Script di orchestrazione
+## 🧠 Orchestration scripts
 
 ### `kg-ups-handler` (server)
 
-Gestisce:
-- `hypervisor-down` → SSH a hypervisor per graceful shutdown
-- `server-down` → `compose down` + halt (chiamato da upsmon a LOWBATT)
-- `notify-onbatt` / `notify-online` → notifiche ntfy
+Handles:
+- `hypervisor-down` → SSH to hypervisor for a graceful shutdown
+- `server-down` → `compose down` plus halt (called by upsmon at LOWBATT)
+- `notify-onbatt` / `notify-online` → ntfy notifications
 
-> **Nota:** il comando SSH verso hypervisor deve essere **solo il nome** (`hypervisor-emergency-shutdown`), non il path completo — il wrapper `n8n-qm-wrap` fa il matching sui nomi.
+> **Note:** the SSH command sent to hypervisor must be **the bare name** (`hypervisor-emergency-shutdown`), not the full path — the `n8n-qm-wrap` wrapper matches on names.
 
 ### `hypervisor-emergency-shutdown` (hypervisor)
 
-Esegue su Proxmox:
-1. `qm shutdown` di tutti i guest running (graceful, 90s timeout)
-2. `qm stop` forzato per chi è ancora su
-3. `sync` + `shutdown -h now`
+On Proxmox it runs:
+1. `qm shutdown` for every running guest (graceful, 90s timeout)
+2. a forced `qm stop` for anything still up
+3. `sync` followed by `shutdown -h now`
 
 ---
 
-## 🐳 Docker Compose sotto systemd
+## 🐳 Docker Compose under systemd
 
 `/etc/systemd/system/homelab-compose.service`:
 
@@ -242,102 +242,102 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now homelab-compose
 ```
 
-> `RemainAfterExit=yes` fa sì che al boot il `compose up -d` rialzi tutto, e `systemctl stop` esegua il `compose down` pulito chiamato da `kg-ups-handler`.
+> `RemainAfterExit=yes` is what makes `compose up -d` bring everything back at boot, and makes `systemctl stop` run the clean `compose down` that `kg-ups-handler` invokes.
 
 ---
 
 ## 🧪 Test procedure
 
-### 1. Verifica base NUT
+### 1. NUT basics
 
 ```bash
 sudo upsc server-ups@localhost
 ```
 
-Atteso: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
+Expected: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
 
-### 2. Verifica SSH nut → hypervisor
+### 2. SSH nut → hypervisor
 
 ```bash
 sudo -u nut ssh root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"
 ```
 
-### 3. Dry-run
+### 3. Dry run
 
-Su server:
+On server:
 ```bash
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler hypervisor-down
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler server-down
 ```
 
-Su hypervisor:
+On hypervisor:
 ```bash
 KG_UPS_DRYRUN=1 /usr/local/bin/hypervisor-emergency-shutdown --dry-run
 ```
 
-### 4. Evento simulato (FSD)
+### 4. Simulated event (FSD)
 
-⚠️ **Questo spegne davvero.**
+⚠️ **This really does shut things down.**
 
 ```bash
 sudo upsmon -c fsd
 ```
 
-### 5. Prova vera a 60 secondi
+### 5. Real 60-second test
 
-1. Stacca la spina dell'UPS dalla parete (hypervisor accesa).
-2. Aspetta ~60 secondi.
-3. **Hypervisor** deve spegnersi ordinatamente (guest → host halt).
-4. **Server** deve restare acceso.
-5. Rattacca la spina prima di `LOWBATT` → `ONLINE` cancella il timer.
+1. Pull the UPS plug from the wall, with hypervisor running.
+2. Wait ~60 seconds.
+3. **hypervisor** must shut down cleanly (guests → host halt).
+4. **server** must stay up.
+5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
 
-### 6. Verifica killpower (LOWBATT)
+### 6. Killpower check (LOWBATT)
 
-1. Lascia scaricare fino a `LOWBATT` (o forza con FSD).
-2. Verifica che l'UPS **tagli l'output** (prese spente).
-3. Rattacca la corrente.
-4. Verifica che **server si riaccenda da solo**.
+1. Let it drain to `LOWBATT`, or force it with FSD.
+2. Confirm the UPS **cuts its output** (outlets dead).
+3. Restore mains power.
+4. Confirm **server powers itself back on**.
 
-> ⚠️ **Se l'UPS non taglia l'output**, server resta in stato `halted` e non riparte automaticamente. Serve intervento manuale o una presa smart a monte.
+> ⚠️ **If the UPS does not cut its output**, server stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
 
 ---
 
 ## 🚨 Troubleshooting
 
-| Sintomo | Causa | Fix |
+| Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Cannot load USB library` | Manca `libusb-1.0-0-dev` | `sudo apt install libusb-1.0-0-dev` |
-| `Duplicate driver instance` | PID file residuo | `sudo rm -f /run/nut/*.pid` |
-| `upsd disabled` | `MODE` non impostato in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
-| `unauthorized command` su hypervisor | `hypervisor-emergency-shutdown` non whitelistato nel wrapper | Aggiungi il case in `/usr/local/sbin/n8n-qm-wrap` |
-| `Connection failure` | `upsd` non in ascolto | `sudo systemctl start nut-server` |
-| Hypervisor non si spegne | Switch non sull'UPS | Sposta lo switch sotto UPS |
-| Server non riparte dopo blackout | BIOS "Power On after AC loss" = OFF | Abilitalo nel BIOS |
-| Container non ripartono al boot | `homelab-compose.service` non enabled | `sudo systemctl enable homelab-compose` |
+| `Cannot load USB library` | `libusb-1.0-0-dev` missing | `sudo apt install libusb-1.0-0-dev` |
+| `Duplicate driver instance` | Stale PID file | `sudo rm -f /run/nut/*.pid` |
+| `upsd disabled` | `MODE` not set in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
+| `unauthorized command` on hypervisor | `hypervisor-emergency-shutdown` not whitelisted in the wrapper | Add the case to `/usr/local/sbin/n8n-qm-wrap` |
+| `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
+| hypervisor does not shut down | Switch not on the UPS | Move the switch onto the UPS |
+| server does not restart after an outage | BIOS "Power On after AC loss" = OFF | Enable it in the BIOS |
+| Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
 ---
 
-## 📋 Criterio di uscita
+## 📋 Exit criteria
 
-- [ ] `upsc server-ups@localhost` restituisce dati validi (`OL`, carica, tensione).
-- [ ] `nut-server` e `nut-monitor` attivi e senza errori.
-- [ ] Case `hypervisor-emergency-shutdown` in `/usr/local/sbin/n8n-qm-wrap`.
-- [ ] `sudo -u nut ssh root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"` funziona.
-- [ ] `kg-ups-handler` e `hypervisor-emergency-shutdown` installati; dry-run ok.
-- [ ] `homelab-compose.service` enabled e attivo.
-- [ ] Switch sull'UPS; `hypervisor` in `/etc/hosts`; BIOS server = on-after-AC; BIOS hypervisor = stay-off + WoL.
-- [ ] Prova reale a 60s superata: hypervisor giù ordinata, server su.
-- [ ] Verifica killpower a LB: server riparte da solo (o noto che serve intervento manuale).
-
----
-
-## 📝 Note operative
-
-- **Non fidarti di `battery.runtime`** quando hypervisor è accesa: la calibrazione è a basso carico.
-- **Il lavoro rifiutato non si perde**: la coda di ingest è persistente; `genome-reconcile` ripesca a corrente tornata.
-- **Notifiche sono best-effort**: se il modem non è sull'UPS, il push ntfy non parte durante il blackout — ma lo spegnimento procede comunque.
-- **OPNsense**: non è nel percorso critico (server e hypervisor sono sulla stessa /24). Se non è sull'UPS, cade e riparte da solo.
+- [ ] `upsc server-ups@localhost` returns sane data (`OL`, charge, voltage).
+- [ ] `nut-server` and `nut-monitor` active and error-free.
+- [ ] `hypervisor-emergency-shutdown` case present in `/usr/local/sbin/n8n-qm-wrap`.
+- [ ] `sudo -u nut ssh root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"` works.
+- [ ] `kg-ups-handler` and `hypervisor-emergency-shutdown` installed; dry runs pass.
+- [ ] `homelab-compose.service` enabled and active.
+- [ ] Switch on the UPS; `hypervisor` in `/etc/hosts`; server BIOS = on-after-AC; hypervisor BIOS = stay-off + WoL.
+- [ ] Real 60-second test passed: hypervisor down cleanly, server still up.
+- [ ] Killpower checked at LB: server comes back on its own, or it is documented that manual intervention is needed.
 
 ---
 
-*Documento generato per l'homelab server/hypervisor — Green Cell PowerProof 2000VA.*
+## 📝 Operational notes
+
+- **Do not trust `battery.runtime`** while hypervisor is running: the calibration is for low load.
+- **Rejected work is not lost**: the ingest queue is persistent, and `genome-reconcile` picks it up once power is back.
+- **Notifications are best-effort**: if the modem is not on the UPS the ntfy push will not go out during an outage — the shutdown still proceeds.
+- **OPNsense** is not in the critical path (server and hypervisor share the same /24). If it is not on the UPS it drops and comes back by itself.
+
+---
+
+*Written for the server/hypervisor homelab — Green Cell PowerProof 2000VA.*
