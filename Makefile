@@ -48,7 +48,12 @@ check: check-env ## Verifica prerequisiti e validità configurazioni
 	@docker compose config --quiet && echo "✅ Compose config valida" || echo "❌ Errore nella config"
 	@echo ""
 	@if [ -f .env ]; then \
-		grep -c "CHANGE_ME" .env && echo "⚠️  Ci sono password da cambiare nel .env!" || echo "✅ Nessun CHANGE_ME trovato"; \
+		n=$$(grep -c "CHANGE_ME" .env || true); \
+		if [ "$$n" -gt 0 ]; then \
+			echo "⚠️  $$n valori CHANGE_ME ancora da sostituire nel .env"; \
+		else \
+			echo "✅ Nessun CHANGE_ME trovato"; \
+		fi; \
 	fi
 
 check-env: ## Verifica che .env sia allineato a .env.example
