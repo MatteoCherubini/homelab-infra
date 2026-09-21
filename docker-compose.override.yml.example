@@ -1,0 +1,48 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  Stack locali — copiare in docker-compose.override.yml       ║
+# ╚══════════════════════════════════════════════════════════════╝
+#
+# Docker Compose legge automaticamente `docker-compose.override.yml` accanto
+# al file principale e ne fonde il contenuto. Il file vero è gitignorato:
+# serve a far girare su UNA macchina servizi che non appartengono a questo
+# repository — un progetto separato, o un servizio che si sta solo provando.
+#
+# PERCHÉ NON UN BRANCH
+#
+# Tenere un servizio locale in un branch dedicato sembra comodo e ha un
+# effetto collaterale sgradevole: quando si torna su un altro branch il
+# servizio continua a girare, ma non è più dichiarato da nessun file. Docker
+# lo considera allora un container "orfano" del progetto, e `make up` — che
+# usa `--remove-orphans` — lo rimuove senza chiedere.
+#
+# È già successo su questa infrastruttura: un container è rimasto in
+# esecuzione per settimane con le sue directory montate ormai vuote e il
+# compose file che lo definiva sparito dal disco, quindi non più ricreabile.
+#
+# Un override gitignorato non ha questo problema: il servizio resta
+# dichiarato su questa macchina qualunque sia il branch attivo.
+#
+# NOTE
+#
+# - I percorsi dentro un file incluso si risolvono rispetto alla directory di
+#   QUEL file, non rispetto alla root: un `build: context: .` in
+#   /percorso/mio-servizio/compose.yml costruisce da /percorso/mio-servizio.
+# - Il percorso va scelto dove l'utente che gestisce lo stack può scrivere:
+#   /opt appartiene a root su una Ubuntu standard.
+# - La rete `homelab` è definita in docker-compose.yml e viene ereditata dal
+#   merge: i file inclusi non devono ridichiararla, o l'include va in conflitto.
+# - Le variabili che servono al servizio locale vanno nel .env di questa
+#   macchina. `make check-env` le segnalerà come "extra" rispetto a
+#   .env.example: è atteso e corretto, non sono configurazione del repository.
+
+# Progetto che vive in un repository suo, fuori da questo albero:
+include:
+  - /percorso/del/progetto-separato/compose.yml
+
+# Oppure un servizio dichiarato direttamente qui:
+# services:
+#   qualcosa-in-prova:
+#     image: qualche/immagine:1.2.3
+#     restart: unless-stopped
+#     networks:
+#       - homelab

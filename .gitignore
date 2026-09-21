@@ -8,6 +8,11 @@ media/
 .env*
 !.env.example
 
+# Stack locali: servizi che girano solo su questa macchina (esperimenti,
+# progetti separati) si dichiarano qui invece che in un branch dedicato.
+# Vedi docker-compose.override.yml.example.
+docker-compose.override.yml
+
 # OS
 .DS_Store
 Thumbbs.db
