@@ -103,7 +103,7 @@ services:
       # ── Syncthing ─────────────────────────────────────────────────────────
       SYNCTHING_URL: ${SYNCTHING_URL}
       SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
-      # ── Sicurezza SSRF ────────────────────────────────────────────────────
+      # ── SSRF protection ───────────────────────────────────────────────────
       N8N_SSRF_PROTECTION_ENABLED: ${N8N_SSRF_PROTECTION_ENABLED}
       N8N_SSRF_BLOCKED_IP_RANGES: ${N8N_SSRF_BLOCKED_IP_RANGES}
       N8N_SSRF_ALLOWED_HOSTNAMES: ${N8N_SSRF_ALLOWED_HOSTNAMES}
