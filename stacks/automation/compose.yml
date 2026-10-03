@@ -84,7 +84,11 @@ services:
     environment:
       # ── Knowledge Genome ──────────────────────────────────────────────────
       <<: *kg-env
-      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Read from .env rather than written here. The value must stay false —
+      # the workflows take their configuration from {{ $env.X }} and blocking
+      # env access in nodes disables them — but hardcoding it made the
+      # template's copy decoration: raising it to true changed nothing.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: ${N8N_BLOCK_ENV_ACCESS_IN_NODE}
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
@@ -147,7 +151,7 @@ services:
       # Same anchor as the `n8n` service, and it matters more here: in queue
       # mode THIS is the process that executes nodes and resolves the $env.
       <<: *kg-env
-      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: ${N8N_BLOCK_ENV_ACCESS_IN_NODE}
       # ── Database ──────────────────────────────────────────────────────────
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db
