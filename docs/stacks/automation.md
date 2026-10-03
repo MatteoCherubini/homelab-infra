@@ -65,6 +65,19 @@ configured and never reaches its destination. Two more were found and removed
 the same way: `N8N_WORKER_VERSION` (the worker image comes from `N8N_VERSION`)
 and `N8N_NODE_FUNCTION_ALLOW_BUILTIN` (never passed to any container).
 
+The 2.41.6 upgrade surfaced four more, and they are the reason the deprecation
+warnings were misleading: n8n asked for settings that `.env.example` appeared
+to supply. Three were wired into both services — see the runtime limits below.
+The fourth, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`, was deleted instead: n8n
+3.0 removes it and makes workers run manual executions unconditionally, so
+adopting it early would move real load rather than silence a warning.
+
+The lesson is not about any one variable. A variable that appears in
+`.env.example` and in no compose file is indistinguishable, from the outside,
+from one that works — until the day its value matters. `make check-env`
+compares `.env` against the template; nothing compares the template against
+what the containers are actually handed.
+
 ---
 
 ## Addressing: container names, not public hostnames
@@ -117,6 +130,18 @@ refer to the same path and no translation is needed.
   `EXECUTIONS_DATA_MAX_AGE=168` (7 days).
 - Binary data goes to the filesystem, not the database.
 - `NODE_OPTIONS=--max-old-space-size=1024` caps n8n's heap.
+- Three runtime limits are pinned to what is the default today, on both
+  services, because n8n 3.0 shrinks all three: `N8N_RUNNERS_TASK_TIMEOUT`
+  (300s → 60s), `N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES` (2 GiB →
+  256 MiB) and `N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES` (5000 → 1000). Pinning
+  them makes the 3.0 upgrade a version change and nothing else.
+- `N8N_SSRF_BLOCKED_IP_RANGES` keeps the `default` keyword rather than listing
+  ranges literally. `default` is n8n's built-in set and it grows; a literal
+  list would freeze and quietly stop tracking it. n8n 3.0 adds the CGNAT space
+  `100.64.0.0/10` — where Tailscale lives — which costs nothing here, because
+  n8n addresses internal services by container name and the SSH hops are not
+  n8n requests. Anything that does need a blocked range goes on the hostname
+  allowlist.
 - Both services run as `PUID:PGID` from `.env`, so files written into the
   mounted data directory stay owned by the host user.
 
