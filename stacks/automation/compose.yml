@@ -110,6 +110,15 @@ services:
       # ── Webhook HMAC ──────────────────────────────────────────────────────
       N8N_WEBHOOK_HMAC_SECRET: ${N8N_WEBHOOK_HMAC_SECRET}
       WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      # ── Runtime limits ────────────────────────────────────────────
+      # Pinned to the values that are the default TODAY. n8n 3.0 shrinks all
+      # three: task timeout 300s → 60s, decompressed size 2 GiB → 256 MiB, zip
+      # entries 5000 → 1000. Written out here because they had lived in
+      # .env.example alone, where they configured nothing at all.
+      # Set on BOTH services deliberately, for the reason the anchor exists.
+      N8N_RUNNERS_TASK_TIMEOUT: ${N8N_RUNNERS_TASK_TIMEOUT}
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: ${N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES}
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: ${N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES}
       # ── Performance / Storage ─────────────────────────────────────────────
       NODE_OPTIONS: --max-old-space-size=1024
       EXECUTIONS_DATA_PRUNE: "true"
@@ -152,6 +161,11 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       GENERIC_TIMEZONE: ${TZ}
       TORRE_MAC: ${TORRE_MAC}
+      # ── Runtime limits ────────────────────────────────────────────
+      # The copy that matters most: this is the process that runs the nodes.
+      N8N_RUNNERS_TASK_TIMEOUT: ${N8N_RUNNERS_TASK_TIMEOUT}
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: ${N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES}
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: ${N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES}
       # ── Syncthing ─────────────────────────────────────────────────────────
       SYNCTHING_URL: ${SYNCTHING_URL}
       SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
