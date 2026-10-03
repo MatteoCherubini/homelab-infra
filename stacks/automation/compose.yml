@@ -109,7 +109,9 @@ services:
       N8N_SSRF_ALLOWED_HOSTNAMES: ${N8N_SSRF_ALLOWED_HOSTNAMES}
       # ── Webhook HMAC ──────────────────────────────────────────────────────
       N8N_WEBHOOK_HMAC_SECRET: ${N8N_WEBHOOK_HMAC_SECRET}
-      WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      # WEBHOOK_URL is a deprecated alias of this key since n8n 2.35, and
+      # was still the name used here. Same value, the name n8n now wants.
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
       # ── Runtime limits ────────────────────────────────────────────
       # Pinned to the values that are the default TODAY. n8n 3.0 shrinks all
       # three: task timeout 300s → 60s, decompressed size 2 GiB → 256 MiB, zip
