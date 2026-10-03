@@ -91,6 +91,41 @@ Per-service upgrade notes live with each stack:
 [automation](stacks/automation.md) · [git](stacks/git.md) ·
 [security](stacks/security.md) · [core](stacks/core.md)
 
+### Measure the baseline with the tool you will judge by
+
+Run the verification **before** the upgrade, not only after, and run the same
+command both times. Otherwise a fault that was already there becomes evidence
+against the change you just made.
+
+Upgrading Nginx Proxy Manager to 2.16.0 is the case that proves it. The
+pre-upgrade `certbot renew --dry-run` failed on one of five certificates: a
+proxy host pointing at a container that no longer ran, returning 503 to the
+HTTP-01 challenge. The release had bumped certbot by two minor versions and
+warned that DNS plugins might break. Had that dry-run been run only afterwards,
+the obvious reading would have been that certbot was broken, and the obvious
+response a rollback that fixed nothing and gave up the security fixes.
+
+Recording the expected result of each check, including the ones expected to
+fail, is what makes the post-upgrade output readable.
+
+### Verify through the path the application really uses
+
+When a release changes a tool the service drives — certbot, a database client,
+a backup helper — invoking that tool by hand can fail for reasons that are not
+the fault being looked for. 2.16.0 also started removing DNS provider
+credentials from disk around each certbot run, which would make a hand-run
+renewal of a DNS-validated certificate fail while the service's own renewal
+works. In the event the credentials stayed on disk and the manual run was
+conclusive, but the check was written to be read either way: a gate whose
+failure has two possible meanings is not a gate.
+
+### Do not measure immediately after a restart
+
+`make healthcheck` run seconds after `docker compose up -d` reports `HTTP 000`
+on services that have not finished binding their port. That is the measurement
+being too early, not the service being down. Wait for the health endpoint to
+answer, then measure.
+
 ## 5. Record it
 
 Bump the versions in `.env.example` too. That file is the source of truth for
