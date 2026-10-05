@@ -54,6 +54,42 @@ n8n's SSRF protection stays enabled, with an explicit hostname allowlist
 (`N8N_SSRF_ALLOWED_HOSTNAMES`) rather than being switched off. A service that
 n8n needs to call must be added there, or the request is blocked.
 
+## Host network and physical topology
+
+The Docker network above sits on a physical layout described nowhere else. It
+cost an afternoon to reconstruct from switch screenshots after a house move,
+which is the only argument this section needs.
+
+The server has **one** interface, `enp37s0`, addressed statically in
+`/etc/netplan/50-cloud-init.yaml`:
+
+| | |
+|---|---|
+| Server | `10.0.10.20/24` on `enp37s0` |
+| Gateway and DNS | `10.0.10.1` — OPNsense, running on a ZimaBoard |
+| Workstation (`torre`) | `10.0.10.10` |
+
+Static rather than DHCP, because the address is a dependency: the UPS handler
+reaches the workstation by address through an SSH forced command, and a lease
+that moves breaks it silently. See [UPS orchestration](stacks/ups.md).
+
+The segment is carried by a TP-Link Easy Smart switch with 802.1Q VLANs:
+
+| VLAN | Name | Untagged ports | Carries |
+|------|------|----------------|---------|
+| 1 | Default | 7, 8 | — |
+| **10** | **TRUSTED** | 2, 3, 4 | `10.0.10.0/24` — server, workstation |
+| 20 | IOT | 5, 6 | isolated devices |
+
+Port 1 is the trunk to the router, tagged on 10 and 20 and untagged on 1. The
+switch's own management page answers over HTTP on the TRUSTED VLAN and has no
+SSH; its address comes from DHCP, so it moves.
+
+The consequence worth carrying: **moving a machine to a port outside its VLAN
+puts it in a different broadcast domain**, where it is unreachable however
+correct its addressing is, because ARP does not cross a VLAN boundary. A cable
+that lands in the wrong port during a move looks exactly like a dead host.
+
 ## External access
 
 Two paths in, both terminating at the same place:
