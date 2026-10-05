@@ -1,4 +1,4 @@
-## Version 0.5.4
+## Version 0.5.5
 .PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates
 
 SHELL := /bin/bash
