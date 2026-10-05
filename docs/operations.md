@@ -90,6 +90,46 @@ pollers. An n8n workflow that queries Syncthing every minute failed once during
 a 34-second Syncthing restart and succeeded on the next tick. Expected, and
 self-healing — but worth recognising rather than investigating.
 
+## When the server does not come back
+
+The server has **no remote power-on path**. Wake-on-LAN is disabled
+(`ethtool enp37s0` reports `Wake-on: d`) and the BIOS does not restore power
+after an AC loss. So after any mains interruption — including one the UPS
+handled perfectly, halting everything in order — somebody has to walk over and
+press the button. Enabling *Power On after AC loss* in the BIOS is the fix, and
+until it is done this is the first thing to check, not the last.
+
+It matters because a machine in that state **looks alive from outside**. The
+power supply keeps the network card's PHY energised on standby, so the switch
+reports the port linked at full speed, with its LED on, while the operating
+system is not running at all. The only honest signal is the packet counter:
+a port that has received zero packets has nothing behind it.
+
+**Ask the journal before anything else.** One command settles whether the
+machine ever booted:
+
+```bash
+journalctl --list-boots
+```
+
+A gap — no entry between the last clean shutdown and now — means no boot
+happened, or none reached the point of starting the journal. No amount of
+checking addresses, VLANs, cables or storage can explain that, and checking
+them first is how an afternoon disappears.
+
+Only once a boot exists is it worth asking what went wrong inside it:
+
+```bash
+journalctl -b -1 -p err      # errors from the previous boot
+systemctl --failed
+cat /proc/mdstat             # RAID 1: [2/2] [UU] is healthy, [2/1] [U_] is degraded
+ip -br -4 addr               # one interface carries everything: enp37s0
+```
+
+Addressing and the physical layout are in
+[architecture](architecture.md#host-network-and-physical-topology); the
+shutdown half of the design is in [UPS orchestration](stacks/ups.md).
+
 ## Server-side
 
 The server tracks `main` only, with a narrowed fetch refspec:
