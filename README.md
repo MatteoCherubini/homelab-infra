@@ -7,12 +7,13 @@ Thirteen services across six stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
 manager, file sync and push notifications — plus a UPS subsystem that runs on
 the host rather than in a container, because ordered shutdown means halting
-the host itself.
+the host itself, and an encrypted off-site backup every night.
 
 The point of this repository is not that it runs containers. It is that every
 version, hostname and credential lives in one place, that upgrades are checked
-automatically and applied deliberately, and that there is a way to tell whether
-the thing still works after you have changed it.
+automatically and applied deliberately, that there is a way to tell whether
+the thing still works after you have changed it, and a tested way back when it
+does not.
 
 ---
 
@@ -72,6 +73,8 @@ Detail lives in [`docs/`](docs/README.md).
   upgrade procedure
 - [Testing](docs/testing.md) — the two verification layers, and what neither
   covers
+- [Backup](docs/backup.md) — the nightly encrypted off-site copy, the restore
+  drill, the keys and the recovery sheet
 
 **Per stack**
 
@@ -99,7 +102,9 @@ Detail lives in [`docs/`](docs/README.md).
 ├── Makefile                 # operational entrypoints
 ├── stacks/                  # one compose file per responsibility
 │   └── core/ ai/ automation/ git/ security/ tools/
+├── backup/                  # what each off-site backup set contains (data, not code)
 ├── scripts/
+│   ├── backup.sh            # consistent dumps, then restic off-site
 │   ├── init.sh              # first-run setup
 │   ├── check-env.sh         # .env vs .env.example drift
 │   ├── check_updates.py     # release checker + service manifest

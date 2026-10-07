@@ -108,6 +108,8 @@ surfaces are bound to loopback — Syncthing's GUI and API are on
 |------|-------|
 | `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models |
 | `${MEDIA_ROOT}` | Forgejo repositories, on the RAID array |
+| `${MEDIA_ROOT}/backup/dumps` | Consistent database copies, refreshed before every off-site backup |
+| Off-site (S3) | restic repositories, one per backup set, encrypted on this host — see [backup](backup.md) |
 
 Nothing stateful is tracked in git. Both roots live outside the repository
 directory in intent, and `data/` is gitignored regardless.
