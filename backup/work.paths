@@ -1,0 +1,27 @@
+# Backup set "work": what cannot be rebuilt from an image or a download.
+#
+# One path per line. ${DATA_ROOT}, ${MEDIA_ROOT}, ${GENOME_VAULTS_ROOT} and
+# ${REPO_DIR} are substituted by scripts/backup.sh — literally, nothing else
+# is expanded. A leading `?` marks a path that may legitimately be absent;
+# any other missing path fails the run. Credentials: BACKUP_WORK_* in .env.
+# docs/backup.md
+
+# Consistent copies of the databases (backup/postgres.list, backup/sqlite.list)
+${MEDIA_ROOT}/backup/dumps
+
+# Git: repositories, attachments, the forge's own files
+${MEDIA_ROOT}/forgejo/data
+${GENOME_VAULTS_ROOT}
+
+# Service state small enough to keep whole
+${DATA_ROOT}/vaultwarden/data
+${DATA_ROOT}/nginx/data
+${DATA_ROOT}/nginx/letsencrypt
+${DATA_ROOT}/ntfy/data
+${DATA_ROOT}/n8n/data
+${DATA_ROOT}/homepage/config
+${DATA_ROOT}/syncthing
+
+# The configuration itself: versions, paths and every secret
+${REPO_DIR}/.env
+?${REPO_DIR}/docker-compose.override.yml
