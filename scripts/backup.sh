@@ -11,7 +11,7 @@
 #   ./scripts/backup.sh run [set]           # dumps, then every set (or one)
 #   ./scripts/backup.sh init [set]          # create the repositories, once
 #   ./scripts/backup.sh snapshots [set]     # list the snapshots
-#   ./scripts/backup.sh restore-test [set]  # restore the latest dumps, verify them
+#   ./scripts/backup.sh restore-test [set]  # restore the latest snapshots, verify them
 #   ./scripts/backup.sh maintenance [set]   # forget + prune + check, ADMIN key
 #
 # `run` prints exactly one JSON document on stdout, which the n8n workflow
@@ -51,6 +51,7 @@ HOST_TAG=$(hostname -s)
 
 STATE_DIR="$DATA_ROOT/backup"          # restic cache and the last-success stamp
 DUMP_DIR="$MEDIA_ROOT/backup/dumps"    # consistent copies, refreshed before each run
+SCRATCH="$STATE_DIR/restore-test"      # the restore drill's, emptied before and after
 
 ERRORS=()
 DUMPED=()
@@ -295,21 +296,61 @@ cmd_snapshots() {
   done
 }
 
-# The drill that the rest of the tooling cannot do: bring the latest dumps
-# back from off-site and prove they open. Postgres with pg_restore -l, SQLite
-# with integrity_check. Everything happens in a scratch directory.
+# The drill that the rest of the tooling cannot do: bring each set back from
+# off-site into a scratch directory and prove it opens. The set holding the
+# database copies gets the database check; every other set is restored whole,
+# each file verified against the repository.
 cmd_restore_test() {
-  local set=${1:-work} scratch="$STATE_DIR/restore-test" restored
+  local sets=() set ok=1
+  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
   take_lock
   nightly_key || die "BACKUP_S3_ACCESS_KEY_ID or BACKUP_S3_SECRET_ACCESS_KEY not set"
-  set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
   prepare_dirs
-  restored="$scratch$DUMP_DIR"
+  for set in "${sets[@]}"; do
+    set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
+    clear_scratch
+    if holds_dumps "$set"; then restore_dumps "$set" || ok=0
+    else restore_whole "$set" || ok=0; fi
+  done
+  clear_scratch
+  [ "$ok" -eq 1 ] || die "restore test FAILED"
+  log "restore test passed"
+}
+
+clear_scratch() {
+  docker run --rm --mount "type=bind,src=$STATE_DIR,dst=/s" "$TOOLS_IMG" rm -rf /s/restore-test
+}
+
+# True when the set's list names the dump directory.
+holds_dumps() {
+  local p
+  while IFS= read -r p; do
+    [ "$(expand "${p#\?}")" = "$DUMP_DIR" ] && return 0
+  done < <(read_list "$SETS_DIR/$1.paths")
+  return 1
+}
+
+# Every file of the latest snapshot, read back and checked. An empty archive
+# is legitimate at the start, so it is reported, not failed.
+restore_whole() {
+  local set=$1 n
+  RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
+  log "$set: restoring the latest snapshot whole, every file verified"
+  restic_cmd restore latest --target "$SCRATCH" --verify || { log "ERROR: $set: restore failed"; return 1; }
+  n=$(docker run --rm --mount "type=bind,src=$SCRATCH,dst=/r,readonly" "$TOOLS_IMG" \
+        sh -c 'find /r -type f | wc -l') || { log "ERROR: $set: cannot count the restored files"; return 1; }
+  if [ "$n" -gt 0 ]; then log "$set: ok, $n files restored and verified"
+  else log "$set: the latest snapshot holds no files yet, nothing to verify"; fi
+}
+
+# Postgres dumps opened with pg_restore -l, SQLite copies with integrity_check.
+restore_dumps() {
+  local set=$1 restored="$SCRATCH$DUMP_DIR" ok=1
   RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
   log "$set: restoring $DUMP_DIR from the latest snapshot"
-  restic_cmd restore latest --target "$scratch" --include "$DUMP_DIR" || die "restore failed"
+  restic_cmd restore latest --target "$SCRATCH" --include "$DUMP_DIR" \
+    || { log "ERROR: $set: restore failed"; return 1; }
 
-  local ok=1
   docker run --rm --mount "type=bind,src=$restored,dst=/r,readonly" "$PG_IMG" sh -c '
     n=0; for f in /r/*.dump; do [ -e "$f" ] || continue
       pg_restore -l "$f" >/dev/null || { echo "FAILED: $f" >&2; exit 1; }
@@ -322,10 +363,7 @@ cmd_restore_test() {
         || { echo "FAILED: $f" >&2; exit 1; }
       echo "ok: $(basename "$f")" >&2; n=$((n+1)); done
     [ "$n" -gt 0 ] || { echo "no SQLite copy restored" >&2; exit 1; }' || ok=0
-
-  docker run --rm --mount "type=bind,src=$STATE_DIR,dst=/s" "$TOOLS_IMG" rm -rf /s/restore-test
-  [ "$ok" -eq 1 ] || die "restore test FAILED"
-  log "restore test passed"
+  [ "$ok" -eq 1 ]
 }
 
 # Retention and pruning need delete rights, which the nightly key does not
