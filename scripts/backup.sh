@@ -13,6 +13,7 @@
 #   ./scripts/backup.sh snapshots [set]     # list the snapshots
 #   ./scripts/backup.sh restore-test [set]  # restore the latest snapshots, verify them
 #   ./scripts/backup.sh maintenance [set]   # forget + prune + check, ADMIN key
+#   ./scripts/backup.sh drop-history <set>  # keep only the latest snapshot, ADMIN key
 #
 # `run` prints exactly one JSON document on stdout, which the n8n workflow
 # parses, and its progress on stderr. It exits 0 only when every step worked.
@@ -421,6 +422,31 @@ cmd_maintenance() {
   done
 }
 
+# When a client leaves (docs/backup.md): once their data is gone from the
+# server and a fresh backup has run, every older snapshot of the set still
+# holds it. Keep only the latest, prune the rest; the pruned objects then
+# leave the bucket with its lifecycle rule. ADMIN key, and a typed
+# confirmation, because nothing of the older history comes back.
+cmd_drop_history() {
+  local set=${1:-} latest answer
+  if [ -z "$set" ] || [ ! -f "$SETS_DIR/$set.paths" ]; then
+    die "usage: backup.sh drop-history <set>, with a set defined under backup/"
+  fi
+  take_lock
+  nightly_key || die "BACKUP_S3_ACCESS_KEY_ID or BACKUP_S3_SECRET_ACCESS_KEY not set"
+  set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
+  prepare_dirs
+  latest=$(restic_cmd snapshots latest --json | jq -r '.[0].time // empty' | cut -c1-16)
+  [ -n "$latest" ] || die "$set: no snapshot to keep"
+  log "$set: only the snapshot of $latest (UTC) will be kept, every older one deleted."
+  log "$set: if the data was deleted after that time, stop here and run \`make backup\` first."
+  read -rp "Type the set name to confirm: " answer
+  [ "$answer" = "$set" ] || die "not confirmed, nothing deleted"
+  admin_key
+  restic_cmd forget --group-by '' --keep-last 1 --prune || die "$set: forget/prune failed"
+  log "$set: history dropped, the snapshot of $latest kept"
+}
+
 cmd=${1:-run}
 [ $# -gt 0 ] && shift
 case "$cmd" in
@@ -429,5 +455,6 @@ case "$cmd" in
   snapshots)    cmd_snapshots "$@" ;;
   restore-test) cmd_restore_test "$@" ;;
   maintenance)  cmd_maintenance "$@" ;;
-  *) sed -n '10,15p' "${BASH_SOURCE[0]}" >&2; exit 2 ;;
+  drop-history) cmd_drop_history "$@" ;;
+  *) sed -n '10,16p' "${BASH_SOURCE[0]}" >&2; exit 2 ;;
 esac
