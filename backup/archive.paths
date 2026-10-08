@@ -1,0 +1,9 @@
+# Backup set "archive": the documents the law asks to keep for ten years —
+# signed contracts, invoices, receipts, tax filings. Their own set, because
+# they must outlive everything else here, and everything else must be able to
+# go: work keeps a few months, this keeps ten years.
+#
+# Nothing is ever deleted from the folder before its time; the history only
+# covers mistakes. Placeholders and `?` as in work.paths. Credentials:
+# BACKUP_ARCHIVE_* in .env, history: BACKUP_ARCHIVE_KEEP_*. docs/backup.md
+${MEDIA_ROOT}/archive
