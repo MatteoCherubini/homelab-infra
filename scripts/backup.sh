@@ -181,17 +181,30 @@ dump_sqlite() {
 
 # ── One backup set ────────────────────────────────────────────
 
+# Prints which of the given paths exist, looked up as root inside a
+# container: the account running the backup may not be allowed to look inside
+# some of them (/var/lib/nut, another user's home), and a path it cannot see
+# would otherwise be skipped as absent, silently.
+present_paths() {
+  [ $# -gt 0 ] || return 0
+  docker run --rm --mount "type=bind,src=/,dst=/host,readonly" "$TOOLS_IMG" \
+    sh -c 'for p; do [ -e "/host$p" ] && printf "%s\n" "$p"; done; exit 0' sh "$@"
+}
+
 backup_set() {
-  local set=$1 p raw=() paths=() excl summary rc
+  local set=$1 p i listing raw=() candidates=() present=() paths=() excl summary rc
+  local -A seen=()
   set_credentials "$set" || { fail "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"; return; }
   RESTIC_MOUNTS=()
   mapfile -t raw < <(read_list "$SETS_DIR/$set.paths")
-  for p in "${raw[@]}"; do
-    local optional=0
-    [[ $p == '?'* ]] && { optional=1; p=${p#\?}; }
-    p=$(expand "$p")
-    if [ ! -e "$p" ]; then
-      [ "$optional" -eq 1 ] && { log "$set: skipped, absent: $p"; continue; }
+  for p in "${raw[@]}"; do candidates+=("$(expand "${p#\?}")"); done
+  listing=$(present_paths "${candidates[@]}") || { fail "$set: cannot check which paths exist"; return; }
+  mapfile -t present <<<"$listing"
+  for p in "${present[@]}"; do [ -n "$p" ] && seen[$p]=1; done
+  for i in "${!raw[@]}"; do
+    p=${candidates[$i]}
+    if [ -z "$p" ] || [ -z "${seen[$p]:-}" ]; then
+      [[ ${raw[$i]} == '?'* ]] && { log "$set: skipped, absent: $p"; continue; }
       fail "$set: path not found: $p"; return
     fi
     # Same path inside and outside: a restore lands where the data lived.
