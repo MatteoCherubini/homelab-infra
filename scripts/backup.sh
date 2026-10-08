@@ -160,14 +160,18 @@ dump_sqlite() {
     # The directory is mounted read-write on purpose: a WAL database cannot be
     # opened without its -shm file. sqlite3 takes the proper locks, so the
     # service keeps running while the copy is made.
+    # The copy runs as the owner of the file. With the service stopped,
+    # sqlite3 creates -wal and -shm itself; a root-owned pair left behind by an
+    # interrupted copy would lock the service out of its own database.
     if docker run --rm --mount "type=bind,src=$(dirname "$path"),dst=/db" \
         --mount "type=bind,src=$DUMP_DIR,dst=/out" "$TOOLS_IMG" sh -c '
-          apk add --no-cache sqlite >/dev/null || exit 2
+          apk add --no-cache sqlite su-exec >/dev/null || exit 2
           # Without this, sqlite3 would create an empty database and back it up.
           [ -f "/db/$1" ] || { echo "missing: $1" >&2; exit 3; }
-          sqlite3 "/db/$1" ".backup /out/$2.sqlite3.part" || exit 1
-          [ "$(sqlite3 "/out/$2.sqlite3.part" "pragma integrity_check")" = ok ] || exit 1
-          mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' sh "$(basename "$path")" "$name"; then
+          su-exec "$(stat -c %u:%g "/db/$1")" sqlite3 "/db/$1" ".backup /tmp/copy" || exit 1
+          [ "$(sqlite3 /tmp/copy "pragma integrity_check")" = ok ] || exit 1
+          cp /tmp/copy "/out/$2.sqlite3.part" && mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' \
+        sh "$(basename "$path")" "$name"; then
       DUMPED+=("$name.sqlite3")
     else
       fail "SQLite copy of $name failed ($path)"
