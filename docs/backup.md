@@ -292,6 +292,103 @@ If step 2 is forgotten, the data still leaves on its own: three months of
 history, up to a quarter until the next maintenance, 30 days of old versions —
 about seven months.
 
+## Leaving the provider
+
+Nothing here is tied to Hetzner. A restic repository is a folder of encrypted
+files in a documented format, readable by restic and by an independent
+program, [rustic](https://github.com/rustic-rs/rustic); the scripts only know
+an S3 address, a region and a key, all in `.env`. Moving to another
+S3-compatible provider changes five lines of `.env` and no code. Within the
+EU, from 12 January 2027 the Data Act (Regulation 2023/2854, art. 29) forbids
+switching charges; until then, at this size, the egress included every month
+(1 TB here) is the whole bill.
+
+Not yet exercised end to end. The quarterly copy to a disk, planned, will
+exercise steps 2 and 3 every quarter.
+
+**1. The new provider first.** A bucket and the same three protections, each
+written the provider's way — the Hetzner policy above does not travel:
+
+- a nightly key that can read, write and list, and delete nothing but
+  `*/locks/*` — IAM permission sets, user policies or a bucket policy,
+  depending on the provider;
+- versioning;
+- old versions expiring after 30 days, lone delete markers removed.
+
+Then the canary test of [first-time setup](#first-time-setup), on the new
+bucket.
+
+**2. Copy the files as they are:** same repositories, same passwords, same
+history, nothing re-encrypted. Only the current versions are copied, which is
+all restic needs; stale locks stay behind. [rclone](https://rclone.org/) in a
+container, the two remotes described by environment variables, the keys
+typed — on the new side the nightly key is enough, copying only writes:
+
+```bash
+read -rp "Old key id: " RCLONE_CONFIG_OLD_ACCESS_KEY_ID; read -rsp "Old secret: " RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY; echo
+read -rp "New key id: " RCLONE_CONFIG_NEW_ACCESS_KEY_ID; read -rsp "New secret: " RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY; echo
+export RCLONE_CONFIG_OLD_ACCESS_KEY_ID RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY \
+       RCLONE_CONFIG_NEW_ACCESS_KEY_ID RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY
+docker run --rm \
+  -e RCLONE_CONFIG_OLD_TYPE=s3 -e RCLONE_CONFIG_OLD_PROVIDER=Other -e RCLONE_CONFIG_OLD_REGION=fsn1 \
+  -e RCLONE_CONFIG_OLD_ENDPOINT=https://fsn1.your-objectstorage.com \
+  -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY \
+  -e RCLONE_CONFIG_NEW_TYPE=s3 -e RCLONE_CONFIG_NEW_PROVIDER=Other -e RCLONE_CONFIG_NEW_REGION=<region> \
+  -e RCLONE_CONFIG_NEW_ENDPOINT=<https endpoint> \
+  -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY \
+  rclone/rclone copy old:<bucket> new:<bucket> --s3-no-check-bucket \
+    --exclude '*/locks/**' --exclude 'canary/**' --progress
+```
+
+The data travels through this server, so its connection sets the pace: minutes
+for the databases and the archive, hours or days for terabytes of media — for
+those, the same command can run on a temporary cloud server.
+
+**3. Prove it, set by set:** the new address, the same password, every byte
+read back and checked. `no errors were found` for each:
+
+```bash
+read -rsp "Repository password: " RESTIC_PASSWORD; echo; export RESTIC_PASSWORD
+docker run --rm -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+  -e RESTIC_REPOSITORY=s3:<https endpoint>/<bucket>/work \
+  restic/restic:0.19.1 -o s3.region=<region> check --read-data
+```
+
+**4. Switch.** In `.env`: both `BACKUP_*_REPOSITORY`, `BACKUP_S3_REGION` and
+the nightly key; the passwords stay. Then `make backup`,
+`make backup-restore-test`, `make healthcheck`, and the new provider on the
+recovery sheet.
+
+**5. Close the old bucket** a few weeks later, with its admin key. With
+versioning, emptying a bucket means removing the old versions too; the
+simplest way is a lifecycle rule that expires everything after a day:
+
+```json
+{
+  "Rules": [
+    {"ID": "expire-everything", "Status": "Enabled", "Prefix": "",
+     "Expiration": {"Days": 1},
+     "NoncurrentVersionExpiration": {"NoncurrentDays": 1},
+     "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}},
+    {"ID": "lone-delete-markers", "Status": "Enabled", "Prefix": "",
+     "Expiration": {"ExpiredObjectDeleteMarker": true}}
+  ]
+}
+```
+
+Two or three days later, `aws s3api delete-bucket --bucket <bucket>`. Hetzner
+bills by the hour for as long as any bucket exists, even an empty one.
+
+**Another way: a new repository.** `restic init --from-repo <old>
+--copy-chunker-params`, then `restic copy --from-repo <old>`: a new password,
+or only the recent snapshots. Slower — everything is downloaded, re-encrypted
+and uploaded again.
+
+**If the provider disappears overnight**, or locks the account: the history is
+lost, the data is not — it is on this server. A new bucket elsewhere, the
+`.env` lines, `make backup-init` and `make backup` the same evening. Nothing is
+ever deleted from the archive's folder, so not even an old document is lost.
+
 ## Maintenance — the quarterly session
 
 `make backup-maintenance` asks for the admin key and applies each set's
