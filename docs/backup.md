@@ -6,7 +6,7 @@ workflow runs it every night and reports through ntfy.
 
 | Piece | Role |
 |-------|------|
-| `scripts/backup.sh` | Dumps, restic, a JSON report; also init, snapshots, restore drill, maintenance |
+| `scripts/backup.sh` | Dumps, restic, a JSON report; also init, snapshots, restore drill, maintenance, a client's exit |
 | `backup/<set>.paths`, `backup/<set>.exclude` | What each backup set contains |
 | `backup/postgres.list`, `backup/sqlite.list` | Databases copied consistently before every run |
 | `workflows/homelab-backup.json` | The nightly schedule and the notification |
@@ -32,10 +32,13 @@ touches the disk: `make backup-maintenance` asks for it.
 **A database file in use is not a backup.** The live files are excluded and
 replaced by consistent copies: Postgres through `pg_dump -Fc`, SQLite through
 `sqlite3 .backup`, which takes the proper locks while the service keeps
-running. Each copy is integrity-checked before it replaces the previous one.
+running. Each copy is integrity-checked before it replaces the previous one,
+and runs as the owner of the database file: it never leaves a root-owned file
+behind in a service's data.
 
-**No sudo.** Everything root-owned is read inside a throwaway container, so the
-same command works for the interactive user and for `n8n-runner`.
+**No sudo.** Everything root-owned is read inside a throwaway container — even
+the check that a listed path exists — so the same command sees the same files
+as the interactive user and as `n8n-runner`.
 
 **Data, not code.** What goes off-site is a list of paths and databases under
 `backup/`. Adding a service's data is one line, not a script change.
@@ -43,19 +46,33 @@ same command works for the interactive user and for `n8n-runner`.
 **Compartments.** Each backup set has its own repository and its own password.
 Losing or leaking one set's password exposes that set only.
 
+**Each set lives as long as its contents must.** The documents the law asks to
+keep for ten years and the data a client may ask to have deleted cannot share
+one history. The archive keeps ten years; every other set keeps about three
+months — enough to undo a mistake, short enough to promise in a contract that
+a client's data leaves the backups.
+
 ## Backup sets
 
-| Set | `.env` keys | Holds |
-|-----|-------------|-------|
-| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies, Forgejo, the genome vaults, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing, `.env` |
+| Set | `.env` keys | Holds | History |
+|-----|-------------|-------|---------|
+| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies, Forgejo, the genome vaults, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit | About three months |
+| `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings | Ten years |
 
 A set is a file: `backup/<set>.paths` (and optionally `<set>.exclude`). The
-credentials are `BACKUP_<SET>_REPOSITORY` and `BACKUP_<SET>_PASSWORD`, with
-`-` written as `_`. `make backup` picks up every set it finds.
+credentials are `BACKUP_<SET>_REPOSITORY` and `BACKUP_<SET>_PASSWORD`, its
+history `BACKUP_<SET>_KEEP_*`, with `-` written as `_`. `make backup` picks up
+every set it finds.
+
+**The archive** is a plain folder, readable in ten years without any software
+of ours. Nothing is deleted from it before its time; its history only covers
+mistakes. How documents reach it is decided outside this repository.
 
 **Not backed up, on purpose:** Ollama's models (downloadable again), the Redis
 queue, restic's cache, n8n's execution binary data, Vaultwarden's icon cache,
-container images.
+container images; Syncthing's index and Forgejo's queues and search indexes,
+rebuilt by the services; Forgejo's sessions, temporary files and download
+archives, and the access logs — worthless after a restore.
 
 ## Off-site storage
 
@@ -215,10 +232,12 @@ still go off-site, and the run is reported as an error.
 
 ## Restore
 
-**The drill:** `make backup-restore-test` brings the latest database copies
-back from off-site into a scratch directory, opens every Postgres dump with
-`pg_restore -l` and every SQLite copy with `pragma integrity_check`, then
-deletes the scratch directory. Run it at least every quarter.
+**The drill:** `make backup-restore-test` brings every set back from off-site
+into a scratch directory, emptied before and after. The set holding the
+database copies has every Postgres dump opened with `pg_restore -l` and every
+SQLite copy checked with `pragma integrity_check`; every other set is restored
+whole, each file verified against the repository (`restic restore --verify`).
+Run it at least every quarter.
 
 **One path**, into a scratch directory. The values are typed or pasted, not
 read from `.env` by the shell:
@@ -226,7 +245,7 @@ read from `.env` by the shell:
 ```bash
 export RESTIC_REPOSITORY=… RESTIC_PASSWORD=… AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
 docker run --rm -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-  -v /tmp/restore:/restore restic/restic:0.19.1 \
+  -v /tmp/restore:/restore restic/restic:0.19.1 -o s3.region=fsn1 \
   restore latest --target /restore --include /opt/homelab-infra/data/vaultwarden/data
 ```
 
@@ -238,12 +257,36 @@ the server's layout under the target.
 the recovery sheet, put each tree back in place, restore the databases from
 their copies, `make up`, `make healthcheck`.
 
+## When a client leaves
+
+Their data — genome, repositories, media — is deleted from the server first.
+Every snapshot taken before still holds it, so:
+
+1. `make backup`: a fresh snapshot, without it.
+2. `./scripts/backup.sh drop-history work`, and the same for any other set
+   that held it. It shows the time of the snapshot it will keep, asks for the
+   set name and the admin key, then forgets every older snapshot and prunes.
+3. The pruned objects stay in the bucket as old versions for 30 days (the
+   lifecycle rule), then they are gone.
+
+The deletion certificate states that date: the session plus 30 days. The
+older history of everything else in the set goes too — the price of a
+deletion that is real, paid only when a client leaves. The archive is never
+part of it: the contract and the invoices are what the law asks to keep.
+
+If step 2 is forgotten, the data still leaves on its own: three months of
+history, up to a quarter until the next maintenance, 30 days of old versions —
+about seven months.
+
 ## Maintenance — the quarterly session
 
-`make backup-maintenance` asks for the admin key, applies the retention in
-`.env` (`BACKUP_KEEP_*`: 7 daily, 5 weekly, 12 monthly, 10 yearly — invoices
-must be kept ten years), prunes, and reads back 10% of the data with
-`restic check`. In the same session:
+`make backup-maintenance` asks for the admin key and applies each set's
+history (`BACKUP_<SET>_KEEP_*`, else `BACKUP_KEEP_*`): `work` keeps 14 daily,
+8 weekly and 3 monthly snapshots; `archive` 7 daily, 5 weekly, 12 monthly and
+10 yearly — invoices and contracts must be kept ten years. A set's snapshots
+form one history whatever paths they hold, so a path added by a release never
+starts a history of its own that would never age out. Then it prunes and reads
+back 10% of the data with `restic check`. In the same session:
 
 - run `make backup-restore-test`;
 - check restic's and Alpine's releases: they run through `docker run`, not
