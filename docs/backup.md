@@ -253,11 +253,13 @@ SQLite copy checked with `pragma integrity_check`; every other set is restored
 whole, each file verified against the repository (`restic restore --verify`).
 Run it at least every quarter.
 
-**One path**, into a scratch directory. The values are typed or pasted, not
-read from `.env` by the shell:
+**One path**, into a scratch directory. The values are typed or pasted — not
+read from `.env` by the shell, and kept out of its history:
 
 ```bash
-export RESTIC_REPOSITORY=… RESTIC_PASSWORD=… AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
+read -rp "Repository: " RESTIC_REPOSITORY; read -rsp "Password: " RESTIC_PASSWORD; echo
+read -rp "Key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret: " AWS_SECRET_ACCESS_KEY; echo
+export RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 docker run --rm -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
   -v /tmp/restore:/restore restic/restic:0.19.1 -o s3.region=fsn1 \
   restore latest --target /restore --include /opt/homelab-infra/data/vaultwarden/data
@@ -344,8 +346,9 @@ The data travels through this server, so its connection sets the pace: minutes
 for the databases and the archive, hours or days for terabytes of media — for
 those, the same command can run on a temporary cloud server.
 
-**3. Prove it, set by set:** the new address, the same password, every byte
-read back and checked. `no errors were found` for each:
+**3. Prove it, set by set,** with the new provider's nightly key (`key`): the
+new address, the same password, every byte read back and checked.
+`no errors were found` for each:
 
 ```bash
 read -rsp "Repository password: " RESTIC_PASSWORD; echo; export RESTIC_PASSWORD
@@ -361,7 +364,9 @@ recovery sheet.
 
 **5. Close the old bucket** a few weeks later, with its admin key. With
 versioning, emptying a bucket means removing the old versions too; the
-simplest way is a lifecycle rule that expires everything after a day:
+simplest way is a lifecycle rule that expires everything after a day, saved as
+`empty.json` and applied like the first one
+(`aws s3api put-bucket-lifecycle-configuration … file://empty.json`):
 
 ```json
 {
