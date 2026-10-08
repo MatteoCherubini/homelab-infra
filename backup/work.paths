@@ -25,3 +25,15 @@ ${DATA_ROOT}/syncthing
 # The configuration itself: versions, paths and every secret
 ${REPO_DIR}/.env
 ?${REPO_DIR}/docker-compose.override.yml
+
+# The host's own configuration. The runbooks say how to write it; these are
+# the files as written, keys included — a rebuild goes faster with them.
+/etc/fstab
+?/etc/mdadm/mdadm.conf
+?/etc/netplan
+?/etc/ssh
+?/etc/docker/daemon.json
+?/etc/systemd/system/homelab-compose.service
+?/etc/nut
+?/var/lib/nut/.ssh
+?/home/n8n-runner/.ssh

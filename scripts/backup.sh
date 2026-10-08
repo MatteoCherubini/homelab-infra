@@ -11,8 +11,9 @@
 #   ./scripts/backup.sh run [set]           # dumps, then every set (or one)
 #   ./scripts/backup.sh init [set]          # create the repositories, once
 #   ./scripts/backup.sh snapshots [set]     # list the snapshots
-#   ./scripts/backup.sh restore-test [set]  # restore the latest dumps, verify them
+#   ./scripts/backup.sh restore-test [set]  # restore the latest snapshots, verify them
 #   ./scripts/backup.sh maintenance [set]   # forget + prune + check, ADMIN key
+#   ./scripts/backup.sh drop-history <set>  # keep only the latest snapshot, ADMIN key
 #
 # `run` prints exactly one JSON document on stdout, which the n8n workflow
 # parses, and its progress on stderr. It exits 0 only when every step worked.
@@ -51,6 +52,7 @@ HOST_TAG=$(hostname -s)
 
 STATE_DIR="$DATA_ROOT/backup"          # restic cache and the last-success stamp
 DUMP_DIR="$MEDIA_ROOT/backup/dumps"    # consistent copies, refreshed before each run
+SCRATCH="$STATE_DIR/restore-test"      # the restore drill's, emptied before and after
 
 ERRORS=()
 DUMPED=()
@@ -90,12 +92,15 @@ take_lock() {
   flock -n 9 || die "another backup operation is running"
 }
 
-# BACKUP_<SET>_REPOSITORY and BACKUP_<SET>_PASSWORD, `-` becoming `_`.
+# A set's keys in .env start with BACKUP_<SET>_, `-` becoming `_`.
+set_prefix() { printf 'BACKUP_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
+
+# BACKUP_<SET>_REPOSITORY and BACKUP_<SET>_PASSWORD.
 set_credentials() {
-  local up
-  up=$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')
-  RESTIC_REPOSITORY=$(env_get "BACKUP_${up}_REPOSITORY")
-  RESTIC_PASSWORD=$(env_get "BACKUP_${up}_PASSWORD")
+  local pre
+  pre=$(set_prefix "$1")
+  RESTIC_REPOSITORY=$(env_get "${pre}_REPOSITORY")
+  RESTIC_PASSWORD=$(env_get "${pre}_PASSWORD")
   export RESTIC_REPOSITORY RESTIC_PASSWORD
   [ -n "$RESTIC_REPOSITORY" ] && [ -n "$RESTIC_PASSWORD" ] \
     && [[ $RESTIC_REPOSITORY != *CHANGE_ME* ]] && [[ $RESTIC_PASSWORD != CHANGE_ME* ]]
@@ -160,14 +165,18 @@ dump_sqlite() {
     # The directory is mounted read-write on purpose: a WAL database cannot be
     # opened without its -shm file. sqlite3 takes the proper locks, so the
     # service keeps running while the copy is made.
+    # The copy runs as the owner of the file. With the service stopped,
+    # sqlite3 creates -wal and -shm itself; a root-owned pair left behind by an
+    # interrupted copy would lock the service out of its own database.
     if docker run --rm --mount "type=bind,src=$(dirname "$path"),dst=/db" \
         --mount "type=bind,src=$DUMP_DIR,dst=/out" "$TOOLS_IMG" sh -c '
-          apk add --no-cache sqlite >/dev/null || exit 2
+          apk add --no-cache sqlite su-exec >/dev/null || exit 2
           # Without this, sqlite3 would create an empty database and back it up.
           [ -f "/db/$1" ] || { echo "missing: $1" >&2; exit 3; }
-          sqlite3 "/db/$1" ".backup /out/$2.sqlite3.part" || exit 1
-          [ "$(sqlite3 "/out/$2.sqlite3.part" "pragma integrity_check")" = ok ] || exit 1
-          mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' sh "$(basename "$path")" "$name"; then
+          su-exec "$(stat -c %u:%g "/db/$1")" sqlite3 "/db/$1" ".backup /tmp/copy" || exit 1
+          [ "$(sqlite3 /tmp/copy "pragma integrity_check")" = ok ] || exit 1
+          cp /tmp/copy "/out/$2.sqlite3.part" && mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' \
+        sh "$(basename "$path")" "$name"; then
       DUMPED+=("$name.sqlite3")
     else
       fail "SQLite copy of $name failed ($path)"
@@ -177,17 +186,30 @@ dump_sqlite() {
 
 # ── One backup set ────────────────────────────────────────────
 
+# Prints which of the given paths exist, looked up as root inside a
+# container: the account running the backup may not be allowed to look inside
+# some of them (/var/lib/nut, another user's home), and a path it cannot see
+# would otherwise be skipped as absent, silently.
+present_paths() {
+  [ $# -gt 0 ] || return 0
+  docker run --rm --mount "type=bind,src=/,dst=/host,readonly" "$TOOLS_IMG" \
+    sh -c 'for p; do [ -e "/host$p" ] && printf "%s\n" "$p"; done; exit 0' sh "$@"
+}
+
 backup_set() {
-  local set=$1 p raw=() paths=() excl summary rc
+  local set=$1 p i listing raw=() candidates=() present=() paths=() excl summary rc
+  local -A seen=()
   set_credentials "$set" || { fail "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"; return; }
   RESTIC_MOUNTS=()
   mapfile -t raw < <(read_list "$SETS_DIR/$set.paths")
-  for p in "${raw[@]}"; do
-    local optional=0
-    [[ $p == '?'* ]] && { optional=1; p=${p#\?}; }
-    p=$(expand "$p")
-    if [ ! -e "$p" ]; then
-      [ "$optional" -eq 1 ] && { log "$set: skipped, absent: $p"; continue; }
+  for p in "${raw[@]}"; do candidates+=("$(expand "${p#\?}")"); done
+  listing=$(present_paths "${candidates[@]}") || { fail "$set: cannot check which paths exist"; return; }
+  mapfile -t present <<<"$listing"
+  for p in "${present[@]}"; do [ -n "$p" ] && seen[$p]=1; done
+  for i in "${!raw[@]}"; do
+    p=${candidates[$i]}
+    if [ -z "$p" ] || [ -z "${seen[$p]:-}" ]; then
+      [[ ${raw[$i]} == '?'* ]] && { log "$set: skipped, absent: $p"; continue; }
       fail "$set: path not found: $p"; return
     fi
     # Same path inside and outside: a restore lands where the data lived.
@@ -275,21 +297,61 @@ cmd_snapshots() {
   done
 }
 
-# The drill that the rest of the tooling cannot do: bring the latest dumps
-# back from off-site and prove they open. Postgres with pg_restore -l, SQLite
-# with integrity_check. Everything happens in a scratch directory.
+# The drill that the rest of the tooling cannot do: bring each set back from
+# off-site into a scratch directory and prove it opens. The set holding the
+# database copies gets the database check; every other set is restored whole,
+# each file verified against the repository.
 cmd_restore_test() {
-  local set=${1:-work} scratch="$STATE_DIR/restore-test" restored
+  local sets=() set ok=1
+  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
   take_lock
   nightly_key || die "BACKUP_S3_ACCESS_KEY_ID or BACKUP_S3_SECRET_ACCESS_KEY not set"
-  set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
   prepare_dirs
-  restored="$scratch$DUMP_DIR"
+  for set in "${sets[@]}"; do
+    set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
+    clear_scratch
+    if holds_dumps "$set"; then restore_dumps "$set" || ok=0
+    else restore_whole "$set" || ok=0; fi
+  done
+  clear_scratch
+  [ "$ok" -eq 1 ] || die "restore test FAILED"
+  log "restore test passed"
+}
+
+clear_scratch() {
+  docker run --rm --mount "type=bind,src=$STATE_DIR,dst=/s" "$TOOLS_IMG" rm -rf /s/restore-test
+}
+
+# True when the set's list names the dump directory.
+holds_dumps() {
+  local p
+  while IFS= read -r p; do
+    [ "$(expand "${p#\?}")" = "$DUMP_DIR" ] && return 0
+  done < <(read_list "$SETS_DIR/$1.paths")
+  return 1
+}
+
+# Every file of the latest snapshot, read back and checked. An empty archive
+# is legitimate at the start, so it is reported, not failed.
+restore_whole() {
+  local set=$1 n
+  RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
+  log "$set: restoring the latest snapshot whole, every file verified"
+  restic_cmd restore latest --target "$SCRATCH" --verify || { log "ERROR: $set: restore failed"; return 1; }
+  n=$(docker run --rm --mount "type=bind,src=$SCRATCH,dst=/r,readonly" "$TOOLS_IMG" \
+        sh -c 'find /r -type f | wc -l') || { log "ERROR: $set: cannot count the restored files"; return 1; }
+  if [ "$n" -gt 0 ]; then log "$set: ok, $n files restored and verified"
+  else log "$set: the latest snapshot holds no files yet, nothing to verify"; fi
+}
+
+# Postgres dumps opened with pg_restore -l, SQLite copies with integrity_check.
+restore_dumps() {
+  local set=$1 restored="$SCRATCH$DUMP_DIR" ok=1
   RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
   log "$set: restoring $DUMP_DIR from the latest snapshot"
-  restic_cmd restore latest --target "$scratch" --include "$DUMP_DIR" || die "restore failed"
+  restic_cmd restore latest --target "$SCRATCH" --include "$DUMP_DIR" \
+    || { log "ERROR: $set: restore failed"; return 1; }
 
-  local ok=1
   docker run --rm --mount "type=bind,src=$restored,dst=/r,readonly" "$PG_IMG" sh -c '
     n=0; for f in /r/*.dump; do [ -e "$f" ] || continue
       pg_restore -l "$f" >/dev/null || { echo "FAILED: $f" >&2; exit 1; }
@@ -302,18 +364,12 @@ cmd_restore_test() {
         || { echo "FAILED: $f" >&2; exit 1; }
       echo "ok: $(basename "$f")" >&2; n=$((n+1)); done
     [ "$n" -gt 0 ] || { echo "no SQLite copy restored" >&2; exit 1; }' || ok=0
-
-  docker run --rm --mount "type=bind,src=$STATE_DIR,dst=/s" "$TOOLS_IMG" rm -rf /s/restore-test
-  [ "$ok" -eq 1 ] || die "restore test FAILED"
-  log "restore test passed"
+  [ "$ok" -eq 1 ]
 }
 
 # Retention and pruning need delete rights, which the nightly key does not
 # have by design. The admin key is asked for here and never written to disk.
-cmd_maintenance() {
-  local sets=() set
-  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
-  take_lock
+admin_key() {
   if [ -z "${BACKUP_ADMIN_ACCESS_KEY_ID:-}" ]; then
     read -rp "Admin access key id: " BACKUP_ADMIN_ACCESS_KEY_ID
   fi
@@ -323,18 +379,72 @@ cmd_maintenance() {
   AWS_ACCESS_KEY_ID=$BACKUP_ADMIN_ACCESS_KEY_ID
   AWS_SECRET_ACCESS_KEY=$BACKUP_ADMIN_SECRET_ACCESS_KEY
   export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-  prepare_dirs
+}
+
+# Each set keeps its own history, because the sets do not live equally long:
+# ten years for the archive, a few months for anything a client may ask to
+# have deleted. BACKUP_<SET>_KEEP_<RULE>, else BACKUP_KEEP_<RULE>, else the
+# defaults below; a rule at 0 is left out. Fills KEEP_ARGS.
+# No grouping: each set has its own repository, and restic's default (host
+# and paths) would start a separate history, one the rules never age out,
+# every time a release adds a path to a set.
+retention_for() {
+  local pre rule def n
+  pre=$(set_prefix "$1")
+  KEEP_ARGS=(--group-by '')
+  for rule in DAILY:14 WEEKLY:8 MONTHLY:3 YEARLY:0; do
+    def=${rule#*:}; rule=${rule%%:*}
+    n=$(env_get "${pre}_KEEP_${rule}" "$(env_get "BACKUP_KEEP_${rule}" "$def")")
+    [[ $n =~ ^[0-9]+$ ]] || die "$1: the ${rule,,} retention is not a number: $n"
+    if [ "$n" -gt 0 ]; then KEEP_ARGS+=("--keep-${rule,,}" "$n"); fi
+  done
+  [ ${#KEEP_ARGS[@]} -gt 2 ] || die "$1: every retention rule is 0, nothing would be kept"
+}
+
+cmd_maintenance() {
+  local sets=() set
+  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
+  take_lock
+  # Every set's settings are checked before the admin key is asked for.
   for set in "${sets[@]}"; do
     set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
-    log "$set: forget + prune"
-    restic_cmd forget --prune \
-      --keep-daily "$(env_get BACKUP_KEEP_DAILY 7)" \
-      --keep-weekly "$(env_get BACKUP_KEEP_WEEKLY 5)" \
-      --keep-monthly "$(env_get BACKUP_KEEP_MONTHLY 12)" \
-      --keep-yearly "$(env_get BACKUP_KEEP_YEARLY 10)" || die "$set: forget/prune failed"
+    retention_for "$set"
+  done
+  admin_key
+  prepare_dirs
+  for set in "${sets[@]}"; do
+    set_credentials "$set"
+    retention_for "$set"
+    log "$set: forget + prune (${KEEP_ARGS[*]:2})"
+    restic_cmd forget --prune "${KEEP_ARGS[@]}" || die "$set: forget/prune failed"
     log "$set: check (10% of the data read back)"
     restic_cmd check --read-data-subset=1/10 || die "$set: check failed"
   done
+}
+
+# When a client leaves (docs/backup.md): once their data is gone from the
+# server and a fresh backup has run, every older snapshot of the set still
+# holds it. Keep only the latest, prune the rest; the pruned objects then
+# leave the bucket with its lifecycle rule. ADMIN key, and a typed
+# confirmation, because nothing of the older history comes back.
+cmd_drop_history() {
+  local set=${1:-} latest answer
+  if [ -z "$set" ] || [ ! -f "$SETS_DIR/$set.paths" ]; then
+    die "usage: backup.sh drop-history <set>, with a set defined under backup/"
+  fi
+  take_lock
+  nightly_key || die "BACKUP_S3_ACCESS_KEY_ID or BACKUP_S3_SECRET_ACCESS_KEY not set"
+  set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
+  prepare_dirs
+  latest=$(restic_cmd snapshots latest --json | jq -r '.[0].time // empty' | cut -c1-16)
+  [ -n "$latest" ] || die "$set: no snapshot to keep"
+  log "$set: only the snapshot of $latest (UTC) will be kept, every older one deleted."
+  log "$set: if the data was deleted after that time, stop here and run \`make backup\` first."
+  read -rp "Type the set name to confirm: " answer
+  [ "$answer" = "$set" ] || die "not confirmed, nothing deleted"
+  admin_key
+  restic_cmd forget --group-by '' --keep-last 1 --prune || die "$set: forget/prune failed"
+  log "$set: history dropped, the snapshot of $latest kept"
 }
 
 cmd=${1:-run}
@@ -345,5 +455,6 @@ case "$cmd" in
   snapshots)    cmd_snapshots "$@" ;;
   restore-test) cmd_restore_test "$@" ;;
   maintenance)  cmd_maintenance "$@" ;;
-  *) sed -n '10,15p' "${BASH_SOURCE[0]}" >&2; exit 2 ;;
+  drop-history) cmd_drop_history "$@" ;;
+  *) sed -n '10,16p' "${BASH_SOURCE[0]}" >&2; exit 2 ;;
 esac
