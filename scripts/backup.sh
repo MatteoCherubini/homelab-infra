@@ -401,8 +401,13 @@ retention_for() {
   [ ${#KEEP_ARGS[@]} -gt 2 ] || die "$1: every retention rule is 0, nothing would be kept"
 }
 
+# The nightly key cannot delete, but a compromised server could still add
+# snapshots with false dates, so that these rules keep them and drop the real
+# ones (restic issue #22057): the attacker deletes nothing, this command does.
+# So it shows what it would remove, and removes it only once a person has
+# looked and typed the set name.
 cmd_maintenance() {
-  local sets=() set
+  local sets=() set plan n answer
   if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
   take_lock
   # Every set's settings are checked before the admin key is asked for.
@@ -415,8 +420,19 @@ cmd_maintenance() {
   for set in "${sets[@]}"; do
     set_credentials "$set"
     retention_for "$set"
-    log "$set: forget + prune (${KEEP_ARGS[*]:2})"
-    restic_cmd forget --prune "${KEEP_ARGS[@]}" || die "$set: forget/prune failed"
+    plan=$(restic_cmd forget --dry-run --json "${KEEP_ARGS[@]}") || die "$set: forget --dry-run failed"
+    n=$(jq '[.[].remove // [] | length] | add // 0' <<<"$plan") || die "$set: unreadable forget plan"
+    if [ "$n" -gt 0 ]; then
+      log "$set: the history rules (${KEEP_ARGS[*]:2}) would remove $n snapshots:"
+      restic_cmd forget --dry-run "${KEEP_ARGS[@]}" >&2
+      log "$set: look for snapshots this server did not take — two in one night, a time far"
+      log "$set: from the nightly run, another host — before confirming. docs/backup.md"
+      read -rp "Type the set name to remove them: " answer
+      [ "$answer" = "$set" ] || die "$set: not confirmed, nothing removed"
+      restic_cmd forget --prune "${KEEP_ARGS[@]}" || die "$set: forget/prune failed"
+    else
+      log "$set: no snapshot to remove"
+    fi
     log "$set: check (10% of the data read back)"
     restic_cmd check --read-data-subset=1/10 || die "$set: check failed"
   done
