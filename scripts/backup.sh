@@ -90,12 +90,15 @@ take_lock() {
   flock -n 9 || die "another backup operation is running"
 }
 
-# BACKUP_<SET>_REPOSITORY and BACKUP_<SET>_PASSWORD, `-` becoming `_`.
+# A set's keys in .env start with BACKUP_<SET>_, `-` becoming `_`.
+set_prefix() { printf 'BACKUP_%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
+
+# BACKUP_<SET>_REPOSITORY and BACKUP_<SET>_PASSWORD.
 set_credentials() {
-  local up
-  up=$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')
-  RESTIC_REPOSITORY=$(env_get "BACKUP_${up}_REPOSITORY")
-  RESTIC_PASSWORD=$(env_get "BACKUP_${up}_PASSWORD")
+  local pre
+  pre=$(set_prefix "$1")
+  RESTIC_REPOSITORY=$(env_get "${pre}_REPOSITORY")
+  RESTIC_PASSWORD=$(env_get "${pre}_PASSWORD")
   export RESTIC_REPOSITORY RESTIC_PASSWORD
   [ -n "$RESTIC_REPOSITORY" ] && [ -n "$RESTIC_PASSWORD" ] \
     && [[ $RESTIC_REPOSITORY != *CHANGE_ME* ]] && [[ $RESTIC_PASSWORD != CHANGE_ME* ]]
@@ -327,10 +330,7 @@ cmd_restore_test() {
 
 # Retention and pruning need delete rights, which the nightly key does not
 # have by design. The admin key is asked for here and never written to disk.
-cmd_maintenance() {
-  local sets=() set
-  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
-  take_lock
+admin_key() {
   if [ -z "${BACKUP_ADMIN_ACCESS_KEY_ID:-}" ]; then
     read -rp "Admin access key id: " BACKUP_ADMIN_ACCESS_KEY_ID
   fi
@@ -340,15 +340,44 @@ cmd_maintenance() {
   AWS_ACCESS_KEY_ID=$BACKUP_ADMIN_ACCESS_KEY_ID
   AWS_SECRET_ACCESS_KEY=$BACKUP_ADMIN_SECRET_ACCESS_KEY
   export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-  prepare_dirs
+}
+
+# Each set keeps its own history, because the sets do not live equally long:
+# ten years for the archive, a few months for anything a client may ask to
+# have deleted. BACKUP_<SET>_KEEP_<RULE>, else BACKUP_KEEP_<RULE>, else the
+# defaults below; a rule at 0 is left out. Fills KEEP_ARGS.
+# No grouping: each set has its own repository, and restic's default (host
+# and paths) would start a separate history, one the rules never age out,
+# every time a release adds a path to a set.
+retention_for() {
+  local pre rule def n
+  pre=$(set_prefix "$1")
+  KEEP_ARGS=(--group-by '')
+  for rule in DAILY:14 WEEKLY:8 MONTHLY:3 YEARLY:0; do
+    def=${rule#*:}; rule=${rule%%:*}
+    n=$(env_get "${pre}_KEEP_${rule}" "$(env_get "BACKUP_KEEP_${rule}" "$def")")
+    [[ $n =~ ^[0-9]+$ ]] || die "$1: the ${rule,,} retention is not a number: $n"
+    if [ "$n" -gt 0 ]; then KEEP_ARGS+=("--keep-${rule,,}" "$n"); fi
+  done
+  [ ${#KEEP_ARGS[@]} -gt 2 ] || die "$1: every retention rule is 0, nothing would be kept"
+}
+
+cmd_maintenance() {
+  local sets=() set
+  if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
+  take_lock
+  # Every set's settings are checked before the admin key is asked for.
   for set in "${sets[@]}"; do
     set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
-    log "$set: forget + prune"
-    restic_cmd forget --prune \
-      --keep-daily "$(env_get BACKUP_KEEP_DAILY 7)" \
-      --keep-weekly "$(env_get BACKUP_KEEP_WEEKLY 5)" \
-      --keep-monthly "$(env_get BACKUP_KEEP_MONTHLY 12)" \
-      --keep-yearly "$(env_get BACKUP_KEEP_YEARLY 10)" || die "$set: forget/prune failed"
+    retention_for "$set"
+  done
+  admin_key
+  prepare_dirs
+  for set in "${sets[@]}"; do
+    set_credentials "$set"
+    retention_for "$set"
+    log "$set: forget + prune (${KEEP_ARGS[*]:2})"
+    restic_cmd forget --prune "${KEEP_ARGS[@]}" || die "$set: forget/prune failed"
     log "$set: check (10% of the data read back)"
     restic_cmd check --read-data-subset=1/10 || die "$set: check failed"
   done
