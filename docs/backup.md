@@ -65,13 +65,14 @@ one prefix per set:
 
 ```
 BACKUP_WORK_REPOSITORY=s3:https://fsn1.your-objectstorage.com/<bucket>/work
+BACKUP_ARCHIVE_REPOSITORY=s3:https://fsn1.your-objectstorage.com/<bucket>/archive
 ```
 
 ### Two keys
 
 | Key | Where it lives | Can |
 |-----|----------------|-----|
-| Nightly | `.env` (`BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`) | Read, write and list; delete only `*/locks/*` |
+| Nightly | `.env` (`BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`) | Read, write and list; delete nothing but restic's lock files |
 | Admin | Vaultwarden and the recovery sheet only | Everything, including deleting and pruning |
 
 Keys in a Hetzner project can reach every bucket of that project by default,
@@ -79,7 +80,10 @@ so the nightly key is restricted with **deny** statements. Turn on bucket
 **versioning** as well: then even an object overwritten with garbage keeps its
 previous version, and the nightly key is denied deleting versions.
 
-Starting point for the bucket policy, applied with the admin key. The test in
+The policy names every part of a restic repository except `locks/`, instead
+of denying everything else with `NotResource`: the provider does not document
+`NotResource`, and plain `Resource` patterns work on any S3 implementation.
+Starting point, applied with the admin key. The test in
 [first-time setup](#first-time-setup) is what proves it works on the provider.
 Do not trust the policy until that test has passed.
 
@@ -92,7 +96,11 @@ Do not trust the policy until that test has passed.
       "Effect": "Deny",
       "Principal": {"AWS": ["arn:aws:iam:::user/p<project-id>:<nightly-access-key>"]},
       "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
-      "NotResource": ["arn:aws:s3:::<bucket>/*/locks/*"]
+      "Resource": ["arn:aws:s3:::<bucket>/*/config",
+                   "arn:aws:s3:::<bucket>/*/data/*",
+                   "arn:aws:s3:::<bucket>/*/index/*",
+                   "arn:aws:s3:::<bucket>/*/keys/*",
+                   "arn:aws:s3:::<bucket>/*/snapshots/*"]
     },
     {
       "Sid": "NightlyKeyCannotChangeTheBucket",
@@ -106,44 +114,85 @@ Do not trust the policy until that test has passed.
 }
 ```
 
+### Old versions expire after 30 days
+
+Versioning has a cost of its own: an object that `prune` deletes — a client's
+data after an exit, say — stays behind as an old version, forever, unless a
+lifecycle rule expires it. Thirty days leave time to notice an attack that
+overwrites the bucket and to bring the previous versions back, and keep a
+deletion real. The nightly key is denied changing the rule.
+
+```json
+{
+  "Rules": [
+    {"ID": "old-versions-expire", "Status": "Enabled", "Prefix": "",
+     "NoncurrentVersionExpiration": {"NoncurrentDays": 30},
+     "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}},
+    {"ID": "lone-delete-markers", "Status": "Enabled", "Prefix": "",
+     "Expiration": {"ExpiredObjectDeleteMarker": true}}
+  ]
+}
+```
+
 ## First-time setup
 
-Once, in this order. Every step states what it should print.
+Once, in this order. Every step states what it should print. The AWS CLI runs
+in a container, and the keys are typed, never written into a file or into the
+shell history:
+
+```bash
+aws() { docker run --rm -i -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION=fsn1 \
+          -v "$PWD:/w:ro" -w /w amazon/aws-cli --endpoint-url https://fsn1.your-objectstorage.com "$@"; }
+key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access key: " AWS_SECRET_ACCESS_KEY
+        echo; export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; }
+```
 
 1. **Provider:** create a private bucket, enable versioning, create two S3
    credentials (nightly and admin). Put the admin key in Vaultwarden.
-2. **Policy:** apply the policy above with the admin key, for example:
+2. **Policy and lifecycle rule:** save the two documents above as
+   `policy.json` and `lifecycle.json` in the current directory — the project
+   id is the number in the Console's address bar — then, with the **admin**
+   key (`key`):
 
    ```bash
-   docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/policy.json:/p.json:ro" \
-     amazon/aws-cli s3api put-bucket-policy --endpoint-url https://fsn1.your-objectstorage.com \
-     --bucket <bucket> --policy file:///p.json
+   aws s3api put-bucket-policy --bucket <bucket> --policy file://policy.json
+   aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://lifecycle.json
+   aws s3api get-bucket-lifecycle-configuration --bucket <bucket>   # prints the two rules
    ```
 
-3. **`.env`:** set `BACKUP_WORK_REPOSITORY`, the nightly key and
-   `BACKUP_WORK_PASSWORD` (`openssl rand -hex 32`). `make check-env` → aligned.
-4. **Recovery sheet** (below), written by hand before going on.
-5. `make backup-init` → `created restic repository … at s3:…`.
-6. `make backup` → a JSON report with `"status": "ok"` and a snapshot id.
-7. `make backup-restore-test` → `ok:` per dump, then `restore test passed`.
-8. **Prove append-only** on a canary object, never on real data. With the
-   **nightly** key exported:
+3. **The archive's folder**, owned by whoever files the documents:
 
    ```bash
-   aws() { docker run --rm -i -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY amazon/aws-cli \
-             --endpoint-url https://fsn1.your-objectstorage.com "$@"; }
-   echo canary | aws s3 cp - s3://<bucket>/work/canary.txt   # allowed: upload
-   aws s3 rm s3://<bucket>/work/canary.txt                   # expected: AccessDenied
+   docker run --rm --mount type=bind,src=/mnt/raid/homelab-media,dst=/m alpine:3.24 \
+     sh -c "mkdir -p /m/archive && chown $(id -u):$(id -g) /m/archive"   # src: your MEDIA_ROOT
    ```
 
-   Then remove the canary with the admin key. If the nightly key could delete
-   it, the policy is not doing its job: fix it before relying on the backup.
-   (A maintenance run with the nightly key is *not* a test: with few snapshots
-   there may be nothing to delete, and it would pass for the wrong reason.)
-9. **n8n:** import `workflows/homelab-backup.json`, check that the SSH and ntfy
-   credentials resolve, run it once by hand (an ntfy message titled
-   `Homelab - Backup OK`), then activate it.
-10. `make healthcheck` → `last off-site backup  0 h ago`.
+4. **`.env`:** set both `BACKUP_*_REPOSITORY`, the nightly key and both
+   `BACKUP_*_PASSWORD` (`openssl rand -hex 32`, one each). `make check-env` →
+   aligned.
+5. **Recovery sheet** (below), written by hand before going on.
+6. `make backup-init` → `created restic repository … at s3:…`, once per set.
+7. `make backup` → a JSON report with `"status": "ok"` and both sets.
+8. `make backup-restore-test` → `ok:` for every database copy, a line for the
+   archive (`nothing to verify` while it is empty), then `restore test passed`.
+9. **Prove append-only** on a canary object, never on real data. `canary/data/`
+   matches the same `*/data/*` pattern that protects restic's data, outside
+   any repository. With the **nightly** key (`key`):
+
+   ```bash
+   echo canary | aws s3 cp - s3://<bucket>/canary/data/test.txt   # allowed: upload
+   aws s3 rm s3://<bucket>/canary/data/test.txt                    # expected: AccessDenied
+   ```
+
+   Then remove the canary with the admin key; its old version leaves with the
+   lifecycle rule. If the nightly key could delete it, the policy is not doing
+   its job: fix it before relying on the backup. (A maintenance run with the
+   nightly key is *not* a test: with few snapshots there may be nothing to
+   delete, and it would pass for the wrong reason.)
+10. **n8n:** import `workflows/homelab-backup.json`, check that the SSH and ntfy
+    credentials resolve, run it once by hand (an ntfy message titled
+    `Homelab - Backup OK`), then activate it.
+11. `make healthcheck` → `last off-site backup  0 h ago`.
 
 ## Every night
 
