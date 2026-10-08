@@ -22,8 +22,9 @@ make check-updates  Build the service manifest and check for new releases
 make backup                Dumps, then restic to the off-site repositories
 make backup-init           Create the off-site restic repositories, once
 make backup-snapshots      List the snapshots of every backup set
-make backup-restore-test   Restore the latest dumps into a scratch directory and verify them
-make backup-maintenance    Forget, prune and check, with the ADMIN key (asked, never stored)
+make backup-restore-test   Restore every set into a scratch directory and verify it
+make backup-maintenance    Show what the history rules would remove, remove it once confirmed, check;
+                           ADMIN key, asked and never stored
 ```
 
 ---

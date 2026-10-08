@@ -25,9 +25,14 @@ only ever stores ciphertext. The repository password lives in `.env` and on a
 paper recovery sheet, never with the provider.
 
 **Append-only in practice.** The key used every night can write and read but
-cannot delete, except restic's own lock files. A compromised server can add
-snapshots; it cannot destroy history. Retention needs a second key that never
-touches the disk: `make backup-maintenance` asks for it.
+cannot delete, except restic's own lock files. A compromised server cannot
+destroy history itself. It could only add snapshots with false dates, so that
+the next cleanup keeps those and drops the real ones — a known limit of
+append-only restic ([#22057](https://github.com/restic/restic/issues/22057)):
+the attacker deletes nothing, the cleanup does. So the cleanup needs a second
+key that never touches the disk, shows what it would remove, and removes it
+only once a person has looked; and whatever it removes stays in the bucket
+for 30 more days as an old version.
 
 **A database file in use is not a backup.** The live files are excluded and
 replaced by consistent copies: Postgres through `pg_dump -Fc`, SQLite through
@@ -216,6 +221,9 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
     credentials resolve, run it once by hand (an ntfy message titled
     `Homelab - Backup OK`), then activate it.
 11. `make healthcheck` → `last off-site backup  0 h ago`.
+12. `make backup-maintenance` once, with the admin key → `no snapshot to
+    remove` for each set, then the checks: the admin path works before the day
+    it is needed.
 
 ## Every night
 
@@ -291,8 +299,15 @@ history (`BACKUP_<SET>_KEEP_*`, else `BACKUP_KEEP_*`): `work` keeps 14 daily,
 8 weekly and 3 monthly snapshots; `archive` 7 daily, 5 weekly, 12 monthly and
 10 yearly — invoices and contracts must be kept ten years. A set's snapshots
 form one history whatever paths they hold, so a path added by a release never
-starts a history of its own that would never age out. Then it prunes and reads
-back 10% of the data with `restic check`. In the same session:
+starts a history of its own that would never age out.
+
+For each set it first shows what the rules would remove, and asks for the set
+name before removing anything. Look at the list before typing it: the nightly
+run makes one snapshot per set per night, at the same time, from this host.
+Two snapshots in one night, a time far from the nightly run or another host
+are snapshots this server did not take in the ordinary way — stop, and find
+out why before removing anything. Then it prunes and reads back 10% of the
+data with `restic check`. In the same session:
 
 - run `make backup-restore-test`;
 - check restic's and Alpine's releases: they run through `docker run`, not

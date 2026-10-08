@@ -86,9 +86,10 @@ by sourcing it. See [configuration](configuration.md).
 
 ## What neither layer covers
 
-A full restore. `make backup-restore-test` brings the latest database copies
-back from off-site and proves they open — every Postgres dump with
-`pg_restore -l`, every SQLite copy with `pragma integrity_check` — but nothing
-automated rebuilds a service from them into a scratch instance. Restoring a
+A full restore. `make backup-restore-test` brings every set back from
+off-site and proves it opens — every Postgres dump with `pg_restore -l`, every
+SQLite copy with `pragma integrity_check`, every other file verified against
+the repository — but nothing automated rebuilds a service from them into a
+scratch instance. Restoring a
 whole service, or the whole server, remains a manual exercise, described in
 [backup](backup.md).
