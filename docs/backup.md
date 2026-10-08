@@ -77,8 +77,10 @@ archives, and the access logs — worthless after a restore.
 ## Off-site storage
 
 Any S3-compatible store works. This setup uses Hetzner Object Storage: an EU
-provider, a base price that includes about 1 TB, free API calls. One bucket,
-one prefix per set:
+provider, a base price that includes about 1 TB, free API calls. Object
+Storage, not the same provider's Storage Box: that one speaks SFTP, the key
+that writes there can also delete, and none of the protections below exist.
+One bucket, one prefix per set:
 
 ```
 BACKUP_WORK_REPOSITORY=s3:https://fsn1.your-objectstorage.com/<bucket>/work
@@ -164,14 +166,18 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
         echo; export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; }
 ```
 
-1. **Provider:** create a private bucket, enable versioning, create two S3
-   credentials (nightly and admin). Put the admin key in Vaultwarden.
-2. **Policy and lifecycle rule:** save the two documents above as
-   `policy.json` and `lifecycle.json` in the current directory — the project
-   id is the number in the Console's address bar — then, with the **admin**
-   key (`key`):
+1. **Provider**, in the Console: a private bucket with Object Lock **off** —
+   it can never be turned off again, and nothing here needs it — and two S3
+   credentials, nightly and admin. Each secret is shown only once: put the
+   admin key in Vaultwarden straight away.
+2. **Versioning, policy and lifecycle rule.** The Console does not offer
+   versioning; the S3 API does. Save the two documents above as `policy.json`
+   and `lifecycle.json` in the current directory — the project id is the
+   number in the Console's address bar — then, with the **admin** key (`key`):
 
    ```bash
+   aws s3api put-bucket-versioning --bucket <bucket> --versioning-configuration Status=Enabled
+   aws s3api get-bucket-versioning --bucket <bucket>                # "Status": "Enabled"
    aws s3api put-bucket-policy --bucket <bucket> --policy file://policy.json
    aws s3api put-bucket-lifecycle-configuration --bucket <bucket> --lifecycle-configuration file://lifecycle.json
    aws s3api get-bucket-lifecycle-configuration --bucket <bucket>   # prints the two rules
