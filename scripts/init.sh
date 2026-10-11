@@ -12,6 +12,11 @@ echo "════════════════════════�
 # ── .env ──────────────────────────────────────────────────────
 if [ ! -f .env ]; then
     cp .env.example .env
+    # Every secret lives here: readable by its owner and the docker group —
+    # n8n-runner reads it through that group for the nightly jobs — and by no
+    # one else on the host.
+    chmod 640 .env && chgrp docker .env 2>/dev/null \
+        || echo "⚠️  set .env to group docker and mode 640 by hand (docs/backup.md)"
     echo "✅ .env created from .env.example"
     echo "⚠️  Set every password before starting!"
 else
