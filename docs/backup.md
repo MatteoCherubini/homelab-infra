@@ -197,7 +197,10 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
 
 4. **`.env`:** set both `BACKUP_*_REPOSITORY`, the nightly key and both
    `BACKUP_*_PASSWORD` (`openssl rand -hex 32`, one each). `make check-env` →
-   aligned.
+   aligned. It holds every secret, and `n8n-runner` must read it: owner and
+   `docker` group only — `chgrp docker .env && chmod 640 .env` →
+   `-rw-r----- … homelab docker`. A `.env` copied by hand from the template
+   is readable by everyone on the host.
 5. **Recovery sheet** (below), written by hand before going on.
 6. `make backup-init` → `created restic repository … at s3:…`, once per set.
 7. `make backup` → a JSON report with `"status": "ok"` and both sets.
@@ -422,8 +425,10 @@ name before removing anything. Look at the list before typing it: the nightly
 run makes one snapshot per set per night, at the same time, from this host.
 Two snapshots in one night, a time far from the nightly run or another host
 are snapshots this server did not take in the ordinary way — stop, and find
-out why before removing anything. Then it prunes and reads back 10% of the
-data with `restic check`. In the same session:
+out why before removing anything. Then it prunes and reads back a random
+10% of the data with `restic check` — a different tenth each session, so the
+sessions together cover all of it. While a repository holds only a few packs,
+the draw may contain none: the check then verifies structure only. In the same session:
 
 - run `make backup-restore-test`;
 - check restic's and Alpine's releases: they run through `docker run`, not
