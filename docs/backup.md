@@ -205,12 +205,26 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
    archive (`nothing to verify` while it is empty), then `restore test passed`.
 9. **Prove append-only** on a canary object, never on real data. `canary/data/`
    matches the same `*/data/*` pattern that protects restic's data, outside
-   any repository. With the **nightly** key (`key`):
+   any repository. With the **nightly** key (`key`), one command at a time:
 
    ```bash
-   echo canary | aws s3 cp - s3://<bucket>/canary/data/test.txt   # allowed: upload
-   aws s3 rm s3://<bucket>/canary/data/test.txt                    # expected: AccessDenied
+   echo canary | aws s3 cp - s3://<bucket>/canary/data/test.txt   # allowed; prints nothing
+   aws s3 ls s3://<bucket>/canary/data/                            # lists test.txt
+   aws s3api delete-object --bucket <bucket> --key canary/data/test.txt \
+     --debug 2>&1 | grep -o '<Code>[^<]*</Code>'                   # <Code>AccessDenied</Code>
+   aws s3 ls s3://<bucket>/canary/data/                            # test.txt still there
+   echo lock | aws s3 cp - s3://<bucket>/canary/locks/test         # allowed
+   aws s3 rm s3://<bucket>/canary/locks/test                       # delete: … — restic may unlock
+   aws s3api put-bucket-versioning --bucket <bucket> --versioning-configuration Status=Enabled \
+     --debug 2>&1 | grep -o '<Code>[^<]*</Code>'                   # <Code>AccessDenied</Code>
    ```
+
+   The error code is read from the provider's raw answer because recent AWS
+   CLI releases crash while formatting a refusal whose message is empty, as
+   Hetzner's is: «argument of type 'NoneType' is not a container or
+   iterable» ([aws-cli #10161](https://github.com/aws/aws-cli/issues/10161)).
+   The crash is not the result; the code and the listing are. Exercised on
+   Hetzner on 2026-10-11: both refusals and the lock deletion as above.
 
    Then remove the canary with the admin key; its old version leaves with the
    lifecycle rule. If the nightly key could delete it, the policy is not doing
