@@ -1,5 +1,6 @@
-## Version 0.5.5
-.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates
+## Version 0.6.0
+.PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates \
+  backup backup-init backup-snapshots backup-restore-test backup-maintenance
 
 SHELL := /bin/bash
 
@@ -76,3 +77,18 @@ health: ## Show only containers that are not healthy
 
 check-updates: ## Build the service manifest and check for new releases
 	@python3 ./scripts/check_updates.py
+
+backup: ## Dumps, then restic to the off-site repositories (docs/backup.md)
+	@./scripts/backup.sh run
+
+backup-init: ## Create the off-site restic repositories, once
+	@./scripts/backup.sh init
+
+backup-snapshots: ## List the snapshots of every backup set
+	@./scripts/backup.sh snapshots
+
+backup-restore-test: ## Restore the latest dumps into a scratch directory and verify them
+	@./scripts/backup.sh restore-test
+
+backup-maintenance: ## Forget, prune and check, with the ADMIN key (asked, never stored)
+	@./scripts/backup.sh maintenance

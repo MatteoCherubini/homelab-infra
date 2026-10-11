@@ -1,0 +1,4 @@
+# PostgreSQL databases dumped with `pg_dump -Fc` before every backup.
+# <compose service>  <.env key of the user>  <.env key of the database>
+# The dump lands in ${MEDIA_ROOT}/backup/dumps/<service>.dump. docs/backup.md
+n8n-db  N8N_DB_USER  N8N_DB_NAME

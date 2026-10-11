@@ -1,0 +1,8 @@
+# SQLite databases copied with sqlite3's online `.backup` before every backup,
+# then checked with `pragma integrity_check`. The services keep running.
+# <name>  <path, placeholders as in work.paths>
+# The copy lands in ${MEDIA_ROOT}/backup/dumps/<name>.sqlite3. docs/backup.md
+vaultwarden  ${DATA_ROOT}/vaultwarden/data/db.sqlite3
+forgejo      ${MEDIA_ROOT}/forgejo/data/gitea/gitea.db
+npm          ${DATA_ROOT}/nginx/data/database.sqlite
+ntfy-auth    ${DATA_ROOT}/ntfy/data/auth.db

@@ -61,7 +61,10 @@ something meaningful, **asserts on the response body too** — Nginx and Forgejo
 both answer `200` from the frontend while the backend behind them is broken.
 
 It also prints a fingerprint of the n8n database: workflow count, active
-workflows, credentials, migrations applied. Comparing that fingerprint on both
+workflows, credentials, migrations applied. And it fails when the last
+successful off-site backup is older than `BACKUP_MAX_AGE_HOURS` — the check
+that still works when the nightly notification itself never left. See
+[backup](backup.md). Comparing that fingerprint on both
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
 
@@ -83,7 +86,10 @@ by sourcing it. See [configuration](configuration.md).
 
 ## What neither layer covers
 
-Restore. The snapshots taken before an upgrade are verified as *readable* — a
-`pg_dump` is checked with `pg_restore -l`, a SQLite file with
-`pragma integrity_check` — but no automated test performs an actual restore
-into a scratch database. That remains a manual exercise.
+A full restore. `make backup-restore-test` brings every set back from
+off-site and proves it opens — every Postgres dump with `pg_restore -l`, every
+SQLite copy with `pragma integrity_check`, every other file verified against
+the repository — but nothing automated rebuilds a service from them into a
+scratch instance. Restoring a
+whole service, or the whole server, remains a manual exercise, described in
+[backup](backup.md).

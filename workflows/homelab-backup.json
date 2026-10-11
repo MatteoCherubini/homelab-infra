@@ -1,0 +1,180 @@
+{
+  "name": "Homelab Backup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 2 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c25c2697-d514-46cb-8aec-9d78d69b0f56",
+      "name": "Schedule: every night at 02:30"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /opt/homelab-infra && make backup"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a1875f5c-391c-4fc2-b518-73548f6c1d62",
+      "name": "SSH: make backup",
+      "executeOnce": true,
+      "continueOnFail": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "n8n container -> n8n-runner@server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The script prints one JSON document on stdout, whatever the outcome.\n// Anything else (SSH down, script killed, make missing) becomes an error too:\n// a backup that cannot report must never look like a quiet success.\nconst item = $input.first().json;\nlet data;\ntry {\n  data = JSON.parse(item.stdout);\n} catch (e) {\n  data = {\n    status: 'error',\n    run_at: new Date().toISOString(),\n    sets: [], dumps: [],\n    errors: [item.error?.message || item.error || item.stderr?.slice(-500) || `unparseable output: ${e.message}`],\n  };\n}\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "efc86ca3-3f6e-49f6-b7cc-67ce4c41d56d",
+      "name": "Parse backup report"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst mb = b => `${((b || 0) / 1048576).toFixed(1)} MB`;\nconst sets = (d.sets || []).map(s => s.status === 'ok'\n  ? `${s.name}: snapshot ${s.snapshot}, +${mb(s.data_added)}, ${s.duration_s}s`\n  : `${s.name}: FAILED (restic exit ${s.restic_exit})`).join('\\n');\n\nif (d.status === 'ok') {\n  return [{ json: {\n    title: 'Homelab - Backup OK',\n    priority: 'min',\n    tags: 'floppy_disk',\n    body: `${sets}\\nDumps: ${(d.dumps || []).join(', ')}`,\n  } }];\n}\nreturn [{ json: {\n  title: 'Homelab - Backup FAILED',\n  priority: 'urgent',\n  tags: 'rotating_light',\n  body: [(d.errors || []).map(e => '• ' + e).join('\\n'), sets,\n         'Run `make backup` on the server to see the details. docs/backup.md']\n        .filter(Boolean).join('\\n\\n'),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "f5ece0f8-2ebd-4c7e-b216-374e0b23035e",
+      "name": "Build notification"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ntfy/homelab-jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "Priority",
+              "value": "={{ $json.priority }}"
+            },
+            {
+              "name": "Tags",
+              "value": "={{ $json.tags }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "Raw / Text",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        880,
+        0
+      ],
+      "id": "dd3b9e58-9d2d-4047-aba4-70713a9eb850",
+      "name": "ntfy: send notification",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "TBPXSWOF63k9mvm8",
+          "name": "ntfy-token"
+        },
+        "httpBearerAuth": {
+          "id": "nCv4CUN7Ef086Ewj",
+          "name": "Bearer Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule: every night at 02:30": {
+      "main": [
+        [
+          {
+            "node": "SSH: make backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH: make backup": {
+      "main": [
+        [
+          {
+            "node": "Parse backup report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse backup report": {
+      "main": [
+        [
+          {
+            "node": "Build notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build notification": {
+      "main": [
+        [
+          {
+            "node": "ntfy: send notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "99abebbe-28d4-4baf-a8cd-b4734873bb91",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "96b2f0ec76a4400bbd481c617b24b3b87024cc7a913efacccaf9fc85722e7417"
+  },
+  "id": "zN5jkc6zFv2f3Eb0",
+  "tags": []
+}

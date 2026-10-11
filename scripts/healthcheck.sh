@@ -45,6 +45,8 @@ VAULTWARDEN_PORT=$(env_get VAULTWARDEN_PORT 8096)
 SYNCTHING_GUI_PORT=$(env_get SYNCTHING_GUI_PORT 8384)
 N8N_DB_USER=$(env_get N8N_DB_USER n8n)
 N8N_DB_NAME=$(env_get N8N_DB_NAME n8n)
+DATA_ROOT=$(env_get DATA_ROOT ./data)
+BACKUP_MAX_AGE_HOURS=$(env_get BACKUP_MAX_AGE_HOURS 26)
 
 PASS=0
 FAIL=0
@@ -137,6 +139,25 @@ if want n8n; then
     ok "migrations applied"  "$(q "select count(*) from migrations")"
   else
     bad "reading the n8n database" "no response"
+  fi
+fi
+
+# The nightly off-site backup reports through ntfy; this is the check that
+# still notices when the notification itself never left. The stamp is written
+# by scripts/backup.sh only after a fully successful run. docs/backup.md
+if want backup; then
+  title "Backup"
+  stamp="$DATA_ROOT/backup/last-success"
+  ts=$(cat "$stamp" 2>/dev/null)
+  if [[ $ts =~ ^[0-9]+$ ]]; then
+    age=$(( ($(date +%s) - ts) / 3600 ))
+    if [ "$age" -le "$BACKUP_MAX_AGE_HOURS" ]; then
+      ok "last off-site backup" "${age} h ago"
+    else
+      bad "last off-site backup" "${age} h ago (limit ${BACKUP_MAX_AGE_HOURS} h)"
+    fi
+  else
+    bad "last off-site backup" "never recorded ($stamp)"
   fi
 fi
 

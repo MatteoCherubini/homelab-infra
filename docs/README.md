@@ -12,6 +12,7 @@ the overview; this is the detail.
 | [Operations](operations.md) | The `make` targets, first run, day-to-day, what to be careful with |
 | [Updating](updating.md) | Version policy, the release checker, the upgrade procedure |
 | [Testing](testing.md) | The two verification layers and what neither covers |
+| [Backup](backup.md) | Off-site restic backup: sets, keys, the nightly run, the restore drill, quarterly maintenance |
 
 ## Stacks
 

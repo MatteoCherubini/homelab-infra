@@ -63,6 +63,7 @@ two critical remote code execution holes.
 Read the actual release notes. Then, per service:
 
 ```bash
+make backup                                   # an off-site snapshot of everything first
 make healthcheck                              # before
 
 docker compose stop <service>                 # stateful services only
