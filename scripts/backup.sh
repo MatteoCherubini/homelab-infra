@@ -433,8 +433,10 @@ cmd_maintenance() {
     else
       log "$set: no snapshot to remove"
     fi
-    log "$set: check (10% of the data read back)"
-    restic_cmd check --read-data-subset=1/10 || die "$set: check failed"
+    # A percentage picks packs at random: "1/10" would be the same tenth
+    # every quarter, and the other nine would never be read back.
+    log "$set: check (a random 10% of the data read back)"
+    restic_cmd check --read-data-subset=10% || die "$set: check failed"
   done
 }
 
