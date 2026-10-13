@@ -110,6 +110,7 @@ surfaces are bound to loopback — Syncthing's GUI and API are on
 | `${MEDIA_ROOT}` | Forgejo repositories, on the RAID array |
 | `${MEDIA_ROOT}/backup/dumps` | Consistent database copies, refreshed before every off-site backup |
 | `${MEDIA_ROOT}/archive` | Documents kept ten years — contracts, invoices, filings — backed up as a set of their own |
+| `${MEDIA_ROOT}/host-configs` | The firewall's, the hypervisor's and the guests' configuration, copied from the laptop — see [backup](backup.md#other-machines) |
 | Off-site (S3) | restic repositories, one per backup set, encrypted on this host — see [backup](backup.md) |
 
 Nothing stateful is tracked in git. Both roots live outside the repository
