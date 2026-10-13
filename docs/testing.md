@@ -63,8 +63,9 @@ both answer `200` from the frontend while the backend behind them is broken.
 It also prints a fingerprint of the n8n database: workflow count, active
 workflows, credentials, migrations applied. And it fails when the last
 successful off-site backup is older than `BACKUP_MAX_AGE_HOURS` — the check
-that still works when the nightly notification itself never left. See
-[backup](backup.md). Comparing that fingerprint on both
+that still works when the nightly notification itself never left — and when
+another machine's newest configuration copy is older than
+`HOST_CONFIG_MAX_AGE_DAYS`. See [backup](backup.md). Comparing that fingerprint on both
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
 
