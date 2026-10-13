@@ -26,6 +26,10 @@ ${DATA_ROOT}/syncthing
 ${REPO_DIR}/.env
 ?${REPO_DIR}/docker-compose.override.yml
 
+# Other machines' configuration — firewall, hypervisor, guests — copied here
+# by hand from the laptop with scripts/host-config-copy.sh
+?${MEDIA_ROOT}/host-configs
+
 # The host's own configuration. The runbooks say how to write it; these are
 # the files as written, keys included — a rebuild goes faster with them.
 /etc/fstab

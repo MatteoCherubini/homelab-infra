@@ -52,6 +52,7 @@ HOST_TAG=$(hostname -s)
 
 STATE_DIR="$DATA_ROOT/backup"          # restic cache and the last-success stamp
 DUMP_DIR="$MEDIA_ROOT/backup/dumps"    # consistent copies, refreshed before each run
+HOST_DIR="$MEDIA_ROOT/host-configs"    # other machines' configuration, host-config-copy.sh
 SCRATCH="$STATE_DIR/restore-test"      # the restore drill's, emptied before and after
 
 ERRORS=()
@@ -300,7 +301,8 @@ cmd_snapshots() {
 # The drill that the rest of the tooling cannot do: bring each set back from
 # off-site into a scratch directory and prove it opens. The set holding the
 # database copies gets the database check; every other set is restored whole,
-# each file verified against the repository.
+# each file verified against the repository. The set holding the other
+# machines' configuration also gets each copy checked against its checksum.
 cmd_restore_test() {
   local sets=() set ok=1
   if [ $# -gt 0 ]; then sets=("$@"); else mapfile -t sets < <(all_sets); fi
@@ -310,8 +312,9 @@ cmd_restore_test() {
   for set in "${sets[@]}"; do
     set_credentials "$set" || die "$set: BACKUP_*_REPOSITORY or _PASSWORD not set"
     clear_scratch
-    if holds_dumps "$set"; then restore_dumps "$set" || ok=0
+    if holds "$set" "$DUMP_DIR"; then restore_dumps "$set" || ok=0
     else restore_whole "$set" || ok=0; fi
+    if holds "$set" "$HOST_DIR"; then restore_host_configs "$set" || ok=0; fi
   done
   clear_scratch
   [ "$ok" -eq 1 ] || die "restore test FAILED"
@@ -322,11 +325,11 @@ clear_scratch() {
   docker run --rm --mount "type=bind,src=$STATE_DIR,dst=/s" "$TOOLS_IMG" rm -rf /s/restore-test
 }
 
-# True when the set's list names the dump directory.
-holds_dumps() {
+# True when the set's list names the directory: holds <set> <directory>.
+holds() {
   local p
   while IFS= read -r p; do
-    [ "$(expand "${p#\?}")" = "$DUMP_DIR" ] && return 0
+    [ "$(expand "${p#\?}")" = "$2" ] && return 0
   done < <(read_list "$SETS_DIR/$1.paths")
   return 1
 }
@@ -365,6 +368,27 @@ restore_dumps() {
       echo "ok: $(basename "$f")" >&2; n=$((n+1)); done
     [ "$n" -gt 0 ] || { echo "no SQLite copy restored" >&2; exit 1; }' || ok=0
   [ "$ok" -eq 1 ]
+}
+
+# Every copy taken by host-config-copy.sh: it must match the checksum written
+# when it reached this server, and open. Before the first copy there is
+# nothing to check, and that is reported, not failed.
+restore_host_configs() {
+  local set=$1
+  RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
+  log "$set: restoring $HOST_DIR from the latest snapshot"
+  restic_cmd restore latest --target "$SCRATCH" --include "$HOST_DIR" \
+    || { log "ERROR: $set: restore failed"; return 1; }
+  docker run --rm --mount "type=bind,src=$SCRATCH,dst=/r,readonly" "$TOOLS_IMG" sh -c '
+    d="/r$1"
+    [ -d "$d" ] || { echo "no other machine copied yet, nothing to verify" >&2; exit 0; }
+    n=0; for f in $(find "$d" -type f -name "*.tar.gz"); do
+      [ -f "$f.sha256" ] || { echo "FAILED: no checksum for ${f#$d/}" >&2; exit 1; }
+      ( cd "$(dirname "$f")" && sha256sum -c "$(basename "$f").sha256" >/dev/null ) \
+        || { echo "FAILED: checksum of ${f#$d/}" >&2; exit 1; }
+      tar -tzf "$f" >/dev/null || { echo "FAILED: cannot open ${f#$d/}" >&2; exit 1; }
+      echo "ok: ${f#$d/}" >&2; n=$((n+1)); done
+    echo "$n copies of other machines verified" >&2' sh "$HOST_DIR"
 }
 
 # Retention and pruning need delete rights, which the nightly key does not

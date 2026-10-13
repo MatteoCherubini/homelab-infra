@@ -75,7 +75,7 @@ The 60-second grace period avoids reacting to brief mains flickers.
 | hypervisor (Proxmox/GPU) | ✅ | On the Schuko outlet |
 | Network switch | ✅ | **Must** be on the UPS |
 | Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
-| server BIOS: "Power On after AC loss" | ✅ | ON |
+| server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
 | hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
 
 > ⚠️ **Without the switch on the UPS**, server cannot tell hypervisor to shut down during an outage.
@@ -346,7 +346,7 @@ sudo upsmon -c fsd
 | `unauthorized command` on hypervisor | `hypervisor-emergency-shutdown` not whitelisted in the wrapper | Add the case to `/usr/local/sbin/n8n-qm-wrap` |
 | `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
 | hypervisor does not shut down | Switch not on the UPS | Move the switch onto the UPS |
-| server does not restart after an outage | BIOS "Power On after AC loss" = OFF | Enable it in the BIOS |
+| server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
 | Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
 ---

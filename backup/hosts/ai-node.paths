@@ -1,0 +1,35 @@
+# Profile "ai-node": the knowledge-genome-orchestrator's AI node, a guest.
+#
+# Copied from the laptop by scripts/host-config-copy.sh into
+# ${MEDIA_ROOT}/host-configs/<alias>/, which the `work` set takes off-site.
+# One path per line; a leading `?` marks a path that may be absent, `~/` the
+# login user's home. docs/backup.md, "Other machines".
+#
+# Everything else comes back without a backup: the orchestrator's repository
+# and its deploy/ai-node scripts rebuild the runtime, the genome checkouts are
+# copies of the forge, the models are downloaded again.
+
+# The one file no repository holds: the bots' tokens, the models, the paths
+~/.config/knowledge-genome.env
+
+# The disk the models live on, and git's identity and askPass helper
+/etc/fstab
+?~/.gitconfig
+?~/.ssh/config
+
+# The agent's own settings; skills/ are links into the repository, and
+# auth.json is left out
+?~/.pi/agent/models.json
+?~/.pi/agent/settings.json
+
+# The automation key and its forced command
+?~/.ssh/authorized_keys
+
+# The wrappers as installed — what really runs, which may differ from the
+# repository
+?/usr/local/bin/n8n-pi-wrap
+?/usr/local/bin/kg-idle-check
+?/usr/local/bin/genome-askpass
+
+# The model server's own settings: address, models directory
+?/etc/systemd/system/ollama.service.d

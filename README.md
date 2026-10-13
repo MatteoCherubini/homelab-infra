@@ -105,6 +105,7 @@ Detail lives in [`docs/`](docs/README.md).
 ├── backup/                  # what each off-site backup set contains (data, not code)
 ├── scripts/
 │   ├── backup.sh            # consistent dumps, then restic off-site
+│   ├── host-config-copy.sh  # run on the laptop: other machines' configuration
 │   ├── init.sh              # first-run setup
 │   ├── check-env.sh         # .env vs .env.example drift
 │   ├── check_updates.py     # release checker + service manifest

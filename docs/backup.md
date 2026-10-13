@@ -11,6 +11,8 @@ workflow runs it every night and reports through ntfy.
 | `backup/postgres.list`, `backup/sqlite.list` | Databases copied consistently before every run |
 | `workflows/homelab-backup.json` | The nightly schedule and the notification |
 | `make healthcheck` | Fails when the last successful run is older than `BACKUP_MAX_AGE_HOURS` |
+| `scripts/host-config-copy.sh` | Run on the laptop: another machine's configuration, copied to the server |
+| `backup/hosts/<profile>.paths` | What is copied from each kind of machine |
 
 ---
 
@@ -61,7 +63,7 @@ a client's data leaves the backups.
 
 | Set | `.env` keys | Holds | History |
 |-----|-------------|-------|---------|
-| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies, Forgejo, the genome vaults, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit | About three months |
+| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies, Forgejo, the genome vaults, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
 | `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings | Ten years |
 
 A set is a file: `backup/<set>.paths` (and optionally `<set>.exclude`). The
@@ -261,6 +263,115 @@ The JSON report on stdout is the contract with the workflow:
 A failed dump does not stop the run: the previous copy and every other path
 still go off-site, and the run is reported as an error.
 
+## Other machines
+
+The firewall, the hypervisor and its guests are not backed up by the server,
+and on purpose: the server holds no key that opens them, so a compromised
+server does not hand them over too. Their **configuration** — never the
+guests' disks — is copied by hand from the laptop, which already reaches them
+over SSH, into `${MEDIA_ROOT}/host-configs/<alias>/` on the server. From there
+the `work` set takes it off-site every night.
+
+```bash
+# On the laptop, from this repository. <MEDIA_ROOT> is the server's, written out:
+# the laptop has no .env to read it from.
+./scripts/host-config-copy.sh opnsense <firewall> <server>:<MEDIA_ROOT>/host-configs
+./scripts/host-config-copy.sh proxmox  <hypervisor> <server>:<MEDIA_ROOT>/host-configs
+./scripts/host-config-copy.sh ai-node  <guest> <server>:<MEDIA_ROOT>/host-configs
+```
+
+| Profile | Machine | What is copied |
+|---------|---------|----------------|
+| `opnsense` | An OPNsense firewall | `/conf/config.xml`: everything the web interface configures |
+| `proxmox` | A Proxmox VE host | The cluster file system file by file — every guest's `.conf`, storage, jobs, `priv/` with the authorized keys — then network, boot and passthrough modules, fstab, package sources, SSH, local scripts and hookscripts, cron, units of its own |
+| `ai-node` | The knowledge-genome AI node | The environment file with the bots' tokens, the automation key, the wrappers as installed, the model server's unit settings |
+
+A profile is a file, `backup/hosts/<profile>.paths`, in the format of the
+sets: one path per line, `?` for a path that may be absent, and `~/` for the
+login user's home.
+
+**Once, before the first copy:** the folder on the server, owned by the account
+the laptop logs in as. `MEDIA_ROOT` usually belongs to root, so it is made the
+same way as the archive's:
+
+```bash
+docker run --rm --mount type=bind,src=<MEDIA_ROOT>,dst=/m alpine:3.24 \
+  sh -c "mkdir -p /m/host-configs && chown $(id -u):$(id -g) /m/host-configs && chmod 700 /m/host-configs"
+```
+
+**From outside the home network** the laptop reaches the server only, through
+the VPN. A rule in the laptop's SSH configuration sends the other machines
+through it:
+
+```
+Match originalhost <firewall>,<hypervisor>,<guest> !exec "ping -c1 -W1 <gateway> >/dev/null 2>&1"
+    ProxyJump <server>
+```
+
+The server only forwards the connection (`AllowTcpForwarding`, on by default
+in OpenSSH): authentication stays between the laptop and each machine, with
+the laptop's keys, and the server still holds no key that opens them. The same
+rule makes the hypervisor, the AI node and the firewall reachable for anything
+else done from afar.
+
+**When:** after every change to one of those machines, and at the quarterly
+session. Their configuration changes a few times a year; a forgotten copy
+costs only the changes made since the last one, and `make healthcheck` fails
+once a machine's newest copy is older than `HOST_CONFIG_MAX_AGE_DAYS`
+(default 100).
+
+**What the script guarantees:**
+
+- The archive streams from the machine to the server through the laptop.
+  Nothing is written on the laptop.
+- A required path that is missing stops the copy before a byte is sent. A file
+  the machine cannot read stops it after, and the copy is removed: an
+  incomplete configuration never passes for a good one.
+- On the server the copy is owner-only (700 and 600), tested with `gzip -t`,
+  renamed from `.part` only once whole, and given a `.sha256`.
+  `make backup-restore-test` checks every copy against it after the round trip
+  off-site.
+- Each run adds a copy named after the alias and the time; none is deleted.
+  They weigh a few hundred KB, and each is a point to go back to.
+
+The machine must be awake. A hypervisor that suspends when idle is woken
+first, and a guest must be running.
+
+A Proxmox host rewrites a few status files under `/etc/pve/nodes/<node>/`
+while it runs. If tar reports *file changed as we read it*, the copy is
+refused and removed; run it again.
+
+**These copies hold private keys:** the firewall's VPN and certificate keys,
+the hypervisor's host and API keys, the AI node's tokens. They are treated
+like `.env`: owner-only on the server, encrypted off-site.
+
+**Restoring:**
+
+- **A firewall.** Without it there is no DHCP and no routing. Give the laptop
+  a static address in the server's subnet, on the server's VLAN, and fetch the
+  latest `config.xml` from the server. Install the same OPNsense version and
+  import it — from the installer, with a USB stick holding `/conf/config.xml`,
+  or afterwards from *System → Configuration → Backups*. The console's
+  *Restore a backup* only offers the revisions kept on the same machine.
+  Different hardware may need its interfaces reassigned at the console.
+  Rehearse it once in a VM whose network cards are disconnected
+  (`link_down=1`): a second firewall answering for the gateway's address and
+  serving DHCP would break the whole home network.
+- **A hypervisor.** Install Proxmox VE under the same node name, so that the
+  copied paths match. Put back the network, boot and module files, then
+  reboot. Then copy the guests' `.conf` files back under
+  `/etc/pve/nodes/<node>/` and the storage definitions under `/etc/pve/`. The
+  copied `.link` files give the network cards the names `interfaces` expects.
+  A guest whose disk survived starts as it was; one whose disk is gone comes
+  back from the host's own vzdump archives, when they live on another disk
+  (`qmrestore`), or is rebuilt. Restore the host's SSH keys last: every client
+  that knew the host recognises it again.
+- **A guest.** Reinstall its system, rebuild its runtime from its own
+  repository, then put back the files the copy holds. For the AI node, that
+  means the orchestrator's `deploy/ai-node/install.sh` and
+  `setup-dev-env.sh`, then the environment file. Check that file before using
+  it: `KG_CONFIG=<file> install.sh --verify`.
+
 ## Restore
 
 **The drill:** `make backup-restore-test` brings every set back from off-site
@@ -268,6 +379,8 @@ into a scratch directory, emptied before and after. The set holding the
 database copies has every Postgres dump opened with `pg_restore -l` and every
 SQLite copy checked with `pragma integrity_check`; every other set is restored
 whole, each file verified against the repository (`restic restore --verify`).
+Every copy of another machine is checked against the `.sha256` written when
+it reached the server, and opened.
 Run it at least every quarter.
 
 **One path**, into a scratch directory. The values are typed or pasted — not
@@ -430,6 +543,8 @@ out why before removing anything. Then it prunes and reads back a random
 sessions together cover all of it. While a repository holds only a few packs,
 the draw may contain none: the check then verifies structure only. In the same session:
 
+- copy the [other machines'](#other-machines) configuration again, if a
+  change since the last session has not been copied;
 - run `make backup-restore-test`;
 - check restic's and Alpine's releases: they run through `docker run`, not
   Compose, so the release checker does not see them;

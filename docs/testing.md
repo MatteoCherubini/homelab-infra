@@ -63,8 +63,9 @@ both answer `200` from the frontend while the backend behind them is broken.
 It also prints a fingerprint of the n8n database: workflow count, active
 workflows, credentials, migrations applied. And it fails when the last
 successful off-site backup is older than `BACKUP_MAX_AGE_HOURS` — the check
-that still works when the nightly notification itself never left. See
-[backup](backup.md). Comparing that fingerprint on both
+that still works when the nightly notification itself never left — and when
+another machine's newest configuration copy is older than
+`HOST_CONFIG_MAX_AGE_DAYS`. See [backup](backup.md). Comparing that fingerprint on both
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
 
@@ -88,8 +89,8 @@ by sourcing it. See [configuration](configuration.md).
 
 A full restore. `make backup-restore-test` brings every set back from
 off-site and proves it opens — every Postgres dump with `pg_restore -l`, every
-SQLite copy with `pragma integrity_check`, every other file verified against
-the repository — but nothing automated rebuilds a service from them into a
+SQLite copy with `pragma integrity_check`, every copy of another machine against
+its checksum, every other file verified against the repository — but nothing automated rebuilds a service from them into a
 scratch instance. Restoring a
 whole service, or the whole server, remains a manual exercise, described in
 [backup](backup.md).
