@@ -54,7 +54,7 @@ remote='set -u; cd / || exit 1; ok=1; list=; for p; do opt=0; case $p in "?"*) o
 # On the server: owner-only from the first byte; a stream that breaks leaves
 # nothing behind.
 # shellcheck disable=SC2016  # expanded on the server, not here
-receive='set -eu; umask 077; d=$1/$2; f=$3; mkdir -p "$d"; chmod 700 "$1" "$d"; trap "rm -f \"$d/$f.part\"" EXIT; cat > "$d/$f.part"; gzip -t "$d/$f.part"; n=$(tar -tzf "$d/$f.part" | wc -l); mv "$d/$f.part" "$d/$f"; cd "$d"; sha256sum "$f" > "$f.sha256"; printf "%s, %s entries, sha256 %s\n" "$d/$f" "$n" "$(cut -c1-16 "$f.sha256")"'
+receive='set -eu; umask 077; d=$1/$2; f=$3; mkdir -p "$d" || { echo "create $1 once, owned by this account: docs/backup.md, Other machines" >&2; exit 1; }; chmod 700 "$1" "$d"; trap "rm -f \"$d/$f.part\"" EXIT; cat > "$d/$f.part"; gzip -t "$d/$f.part"; n=$(tar -tzf "$d/$f.part" | wc -l); mv "$d/$f.part" "$d/$f"; cd "$d"; sha256sum "$f" > "$f.sha256"; printf "%s, %s entries, sha256 %s\n" "$d/$f" "$n" "$(cut -c1-16 "$f.sha256")"'
 
 file="$alias-$(date +%Y-%m-%dT%H%M%S).tar.gz"
 result=$(mktemp)   # one line of text, never the data
@@ -67,14 +67,16 @@ ssh -o ConnectTimeout=10 "$alias" "sh -c '$remote' sh ${quoted[*]}" \
 status=("${PIPESTATUS[@]}")
 set -e
 
-if [ "${status[0]}" -ne 0 ]; then
-  # Even when the archive arrived whole, tar may have skipped a file it could
-  # not read: an incomplete configuration must not pass for a good one.
-  if [ "${status[1]}" -eq 0 ]; then
-    ssh -o ConnectTimeout=10 "$server" "rm -f '$dir/$alias/$file' '$dir/$alias/$file.sha256'" || true
-  fi
-  die "$alias reported an error (exit ${status[0]}); nothing was kept, the error is above"
+# When one side stops, the other fails too (a cut stream, a broken pipe):
+# the first error printed above is the cause.
+if [ "${status[1]}" -ne 0 ]; then
+  die "nothing was kept: $alias exited ${status[0]}, the server ${status[1]}; the first error above is the cause"
 fi
-[ "${status[1]}" -eq 0 ] || die "the server did not keep the copy (exit ${status[1]}); the error is above"
+if [ "${status[0]}" -ne 0 ]; then
+  # The archive arrived whole, but tar skipped a file it could not read: an
+  # incomplete configuration must not pass for a good one.
+  ssh -o ConnectTimeout=10 "$server" "rm -f '$dir/$alias/$file' '$dir/$alias/$file.sha256'" || true
+  die "$alias reported an error (exit ${status[0]}); the copy was removed, the error is above"
+fi
 echo "ok: $(cat "$result")"
 echo "The nightly backup takes it off-site; make backup-restore-test checks it." >&2
