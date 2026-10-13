@@ -99,12 +99,20 @@ self-healing — but worth recognising rather than investigating.
 
 ## When the server does not come back
 
-The server has **no remote power-on path**. Wake-on-LAN is disabled
-(`ethtool enp37s0` reports `Wake-on: d`) and the BIOS does not restore power
-after an AC loss. So after any mains interruption — including one the UPS
-handled perfectly, halting everything in order — somebody has to walk over and
-press the button. Enabling *Power On after AC loss* in the BIOS is the fix, and
-until it is done this is the first thing to check, not the last.
+The server powers itself back on when mains power returns: the BIOS is set
+to *Restore on AC power loss → Power On* (tested on 2026-10-13: halted, power
+cord pulled for 30 seconds, back up on its own). Wake-on-LAN stays disabled
+(`ethtool enp37s0` reports `Wake-on: d`), so that is the **only** way back
+without somebody at the button.
+
+It needs the power to the server to actually drop. Unplugging the UPS from the
+wall does not do it — that is what the UPS is for. After a long outage the
+UPS's *killpower* does it: NUT halts the server at low battery and tells the
+UPS to cut its outlets and restore them when mains returns
+([UPS orchestration](stacks/ups.md)). Until that has been tested, an outage
+that ends after the server halted but before the battery ran out leaves the
+server halted, and somebody has to press the button. So this is still the
+first thing to check, not the last.
 
 It matters because a machine in that state **looks alive from outside**. The
 power supply keeps the network card's PHY energised on standby, so the switch
