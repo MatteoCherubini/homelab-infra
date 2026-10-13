@@ -47,6 +47,8 @@ N8N_DB_USER=$(env_get N8N_DB_USER n8n)
 N8N_DB_NAME=$(env_get N8N_DB_NAME n8n)
 DATA_ROOT=$(env_get DATA_ROOT ./data)
 BACKUP_MAX_AGE_HOURS=$(env_get BACKUP_MAX_AGE_HOURS 26)
+MEDIA_ROOT=$(env_get MEDIA_ROOT ./media)
+HOST_CONFIG_MAX_AGE_DAYS=$(env_get HOST_CONFIG_MAX_AGE_DAYS 100)
 
 PASS=0
 FAIL=0
@@ -158,6 +160,29 @@ if want backup; then
     fi
   else
     bad "last off-site backup" "never recorded ($stamp)"
+  fi
+
+  # The other machines' configuration is copied by hand, from the laptop: this
+  # is the check that remembers it. Only where copies exist — a setup with no
+  # other machine has no folder and no line here. docs/backup.md
+  hosts="$MEDIA_ROOT/host-configs"
+  if [ -d "$hosts" ]; then
+    if [ -r "$hosts" ] && [ -x "$hosts" ]; then
+      for d in "$hosts"/*/; do
+        [ -d "$d" ] || continue
+        m=$(basename "$d")
+        newest=$(find "$d" -maxdepth 1 -name '*.tar.gz' -printf '%T@\n' | sort -n | tail -1)
+        if [ -z "$newest" ]; then bad "config copy: $m" "no copy in $d"; continue; fi
+        days=$(( ($(date +%s) - ${newest%.*}) / 86400 ))
+        if [ "$days" -le "$HOST_CONFIG_MAX_AGE_DAYS" ]; then
+          ok "config copy: $m" "${days} days ago"
+        else
+          bad "config copy: $m" "${days} days ago (limit ${HOST_CONFIG_MAX_AGE_DAYS})"
+        fi
+      done
+    else
+      bad "other machines' copies" "$hosts is not readable by $(id -un)"
+    fi
   fi
 fi
 
