@@ -12,6 +12,16 @@
 # The one file no repository holds: the bots' tokens, the models, the paths
 ~/.config/knowledge-genome.env
 
+# The disk the models live on, and git's identity and askPass helper
+/etc/fstab
+?~/.gitconfig
+?~/.ssh/config
+
+# The agent's own settings; skills/ are links into the repository, and
+# auth.json is left out
+?~/.pi/agent/models.json
+?~/.pi/agent/settings.json
+
 # The automation key and its forced command
 ?~/.ssh/authorized_keys
 
@@ -19,6 +29,7 @@
 # repository
 ?/usr/local/bin/n8n-pi-wrap
 ?/usr/local/bin/kg-idle-check
+?/usr/local/bin/genome-askpass
 
 # The model server's own settings: address, models directory
 ?/etc/systemd/system/ollama.service.d

@@ -12,33 +12,47 @@
 # configuration. nodes/ holds every guest's .conf (qemu-server, lxc) and the
 # node's certificates; priv/ holds the authorized keys — /root/.ssh/
 # authorized_keys is a link there — and the tokens and storage passwords.
+# authkey.pub and pve-www.key are left out: the host regenerates them, and
+# rotates the auth key every day.
 /etc/pve/nodes
-?/etc/pve/priv
-?/etc/pve/storage.cfg
+/etc/pve/priv
+/etc/pve/storage.cfg
 ?/etc/pve/datacenter.cfg
 ?/etc/pve/user.cfg
 ?/etc/pve/jobs.cfg
 ?/etc/pve/vzdump.cron
 ?/etc/pve/domains.cfg
 ?/etc/pve/firewall
+?/etc/pve/mapping
+?/etc/pve/sdn
+?/etc/pve/ha
+?/etc/pve/virtual-guest
 ?/etc/pve/corosync.conf
+# The host's CA: with its key in priv/, browsers that trusted it still do
+?/etc/pve/pve-root-ca.pem
 
-# Network and name
+# Network and name. The .link files pin the interface names (nic0, nic1…)
+# that `interfaces` refers to; without them a reinstall may name them otherwise.
 /etc/network/interfaces
 ?/etc/network/interfaces.d
+?/etc/systemd/network
+?/usr/local/lib/systemd/network
 /etc/hosts
 /etc/hostname
 ?/etc/resolv.conf
 
 # Boot and kernel modules: where PCI passthrough is configured
 ?/etc/default/grub
+?/etc/default/grub.d
 ?/etc/kernel/cmdline
 ?/etc/modprobe.d
 ?/etc/modules
 ?/etc/modules-load.d
 
-# Disks, backups, package sources
+# Disks, backups, package sources. lvm/backup holds the volume groups'
+# metadata: the way back with vgcfgrestore when a group is damaged.
 /etc/fstab
+?/etc/lvm/backup
 ?/etc/vzdump.conf
 ?/etc/apt/sources.list
 ?/etc/apt/sources.list.d
@@ -46,6 +60,7 @@
 # The host's SSH keys included: after a rebuild every client that knows the
 # host — the laptop, n8n, NUT — still recognises it.
 /etc/ssh
+?/root/.ssh/config
 
 # Local scripts, hookscripts, scheduled jobs, units of its own
 ?/usr/local/bin
