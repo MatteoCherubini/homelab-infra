@@ -290,9 +290,35 @@ A profile is a file, `backup/hosts/<profile>.paths`, in the format of the
 sets: one path per line, `?` for a path that may be absent, and `~/` for the
 login user's home.
 
+**Once, before the first copy:** the folder on the server, owned by the account
+the laptop logs in as. `MEDIA_ROOT` usually belongs to root, so it is made the
+same way as the archive's:
+
+```bash
+docker run --rm --mount type=bind,src=<MEDIA_ROOT>,dst=/m alpine:3.24 \
+  sh -c "mkdir -p /m/host-configs && chown $(id -u):$(id -g) /m/host-configs && chmod 700 /m/host-configs"
+```
+
+**From outside the home network** the laptop reaches the server only, through
+the VPN. A rule in the laptop's SSH configuration sends the other machines
+through it:
+
+```
+Match originalhost <firewall>,<hypervisor>,<guest> !exec "ping -c1 -W1 <gateway> >/dev/null 2>&1"
+    ProxyJump <server>
+```
+
+The server only forwards the connection (`AllowTcpForwarding`, on by default
+in OpenSSH): authentication stays between the laptop and each machine, with
+the laptop's keys, and the server still holds no key that opens them. The same
+rule makes the hypervisor, the AI node and the firewall reachable for anything
+else done from afar.
+
 **When:** after every change to one of those machines, and at the quarterly
 session. Their configuration changes a few times a year; a forgotten copy
-costs only the changes made since the last one.
+costs only the changes made since the last one, and `make healthcheck` fails
+once a machine's newest copy is older than `HOST_CONFIG_MAX_AGE_DAYS`
+(default 100).
 
 **What the script guarantees:**
 
@@ -311,24 +337,35 @@ costs only the changes made since the last one.
 The machine must be awake. A hypervisor that suspends when idle is woken
 first, and a guest must be running.
 
+A Proxmox host rewrites a few status files under `/etc/pve/nodes/<node>/`
+while it runs. If tar reports *file changed as we read it*, the copy is
+refused and removed; run it again.
+
 **These copies hold private keys:** the firewall's VPN and certificate keys,
 the hypervisor's host and API keys, the AI node's tokens. They are treated
 like `.env`: owner-only on the server, encrypted off-site.
 
 **Restoring:**
 
-- **A firewall.** Install the same OPNsense version, then import `config.xml`,
-  from the console installer or from *System → Configuration → Backups*.
+- **A firewall.** Without it there is no DHCP and no routing. Give the laptop
+  a static address in the server's subnet, on the server's VLAN, and fetch the
+  latest `config.xml` from the server. Install the same OPNsense version and
+  import it — from the installer, with a USB stick holding `/conf/config.xml`,
+  or afterwards from *System → Configuration → Backups*. The console's
+  *Restore a backup* only offers the revisions kept on the same machine.
   Different hardware may need its interfaces reassigned at the console.
-  Rehearse it once in a VM with **no** network on the LAN: a second firewall
-  answering for the gateway's address and serving DHCP would break the whole
-  home network.
+  Rehearse it once in a VM whose network cards are disconnected
+  (`link_down=1`): a second firewall answering for the gateway's address and
+  serving DHCP would break the whole home network.
 - **A hypervisor.** Install Proxmox VE under the same node name, so that the
   copied paths match. Put back the network, boot and module files, then
   reboot. Then copy the guests' `.conf` files back under
-  `/etc/pve/nodes/<node>/` and the storage definitions under `/etc/pve/`. A
-  guest whose disk survived starts as it was. Restore the host's SSH keys
-  last: every client that knew the host recognises it again.
+  `/etc/pve/nodes/<node>/` and the storage definitions under `/etc/pve/`. The
+  copied `.link` files give the network cards the names `interfaces` expects.
+  A guest whose disk survived starts as it was; one whose disk is gone comes
+  back from the host's own vzdump archives, when they live on another disk
+  (`qmrestore`), or is rebuilt. Restore the host's SSH keys last: every client
+  that knew the host recognises it again.
 - **A guest.** Reinstall its system, rebuild its runtime from its own
   repository, then put back the files the copy holds. For the AI node, that
   means the orchestrator's `deploy/ai-node/install.sh` and
