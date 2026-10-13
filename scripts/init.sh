@@ -23,10 +23,16 @@ else
     echo "ℹ️  .env already present"
 fi
 
-source .env
+# The .env is NOT sourced — same reader as backup.sh and healthcheck.sh: it
+# is a data file, and a value with spaces or a `$(...)` would run as a command.
+env_get() {
+    local key=$1 def=${2:-} val
+    val=$(sed -n "s/^[[:space:]]*${key}=//p" .env | tail -1 | tr -d '"'\''\r' | xargs 2>/dev/null)
+    printf '%s' "${val:-$def}"
+}
 
-DATA="${DATA_ROOT:-./data}"
-MEDIA="${MEDIA_ROOT:-./media}"
+DATA=$(env_get DATA_ROOT ./data)
+MEDIA=$(env_get MEDIA_ROOT ./media)
 
 echo ""
 echo "📁 DATA_ROOT: $DATA"
@@ -54,8 +60,8 @@ echo "✅ Directories created"
 echo ""
 echo "🔑 Fixing permissions..."
 
-PUID="${PUID:-1000}"
-PGID="${PGID:-1000}"
+PUID=$(env_get PUID 1000)
+PGID=$(env_get PGID 1000)
 
 # n8n runs as the UID from .env (default 1000)
 chown -R "$PUID:$PGID" "$DATA/n8n/data" 2>/dev/null || true

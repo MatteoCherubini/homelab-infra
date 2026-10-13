@@ -1,0 +1,11 @@
+# Profile "opnsense": an OPNsense firewall.
+#
+# Copied from the laptop by scripts/host-config-copy.sh into
+# ${MEDIA_ROOT}/host-configs/<alias>/, which the `work` set takes off-site.
+# One path per line; a leading `?` marks a path that may be absent, `~/` the
+# login user's home. docs/backup.md, "Other machines".
+#
+# Everything the web interface configures lives in this one file — rules,
+# interfaces, VPN keys, certificates, users. A restore is a fresh install and
+# an import of it.
+/conf/config.xml
