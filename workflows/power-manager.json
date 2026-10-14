@@ -17,7 +17,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "HYPERVISOR_UP=false; VM_STATE=unknown; ssh -o ConnectTimeout=3 -o BatchMode=yes hypervisor \"echo up\" 2>/dev/null | grep -q up && HYPERVISOR_UP=true && VM_STATE=$(ssh hypervisor \"ai-node status\" 2>/dev/null | awk '{print $NF}'); echo \"{\\\"hypervisor_up\\\":${HYPERVISOR_UP},\\\"ai-node\\\":\\\"${VM_STATE}\\\"}\""
+        "command": "=UP=false; AI=unknown; ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\" >/dev/null 2>&1 && UP=true && AI=$(ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node status\" 2>/dev/null | awk '{print $NF}'); echo \"{\\\"hypervisor_up\\\":${UP},\\\"ai_node\\\":\\\"${AI}\\\"}\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -26,14 +26,13 @@
         -16
       ],
       "id": "fc7e5e1f-6d10-4091-acac-764f0b8718c9",
-      "name": "C1 - Status compatto",
+      "name": "C1 - Compact status",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -52,14 +51,14 @@
               "type": "string"
             },
             {
-              "id": "fa7ad674-444a-4a38-bc8f-eea0414af547",
+              "id": "ecddc22e-5980-4291-99a6-750583e7be2a",
               "name": "hypervisor",
               "value": "standby",
               "type": "string"
             },
             {
-              "id": "17903545-87c4-4699-97b0-f14ceab75b5e",
-              "name": "ai-node",
+              "id": "35bd8c76-17e8-45f1-8b6b-ce6fdb4f4af4",
+              "name": "ai_node",
               "value": "stopped",
               "type": "string"
             }
@@ -79,7 +78,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"hypervisor standby\""
+        "command": "=ssh {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter standby-if-idle\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -88,7 +87,7 @@
         -400
       ],
       "id": "acdd6bd1-4823-46e8-aac1-72bfde69df30",
-      "name": "B6 - Hypervisor standby",
+      "name": "B6 - Hypervisor standby if idle",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
@@ -99,7 +98,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"ai-node stop\"; for i in $(seq 1 12); do ssh hypervisor \"ai-node status\" 2>/dev/null | grep -q stopped && exit 0; sleep 5; done; exit 1"
+        "command": "=ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node stop\"; for i in $(seq 1 12); do ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node status\" 2>/dev/null | grep -q stopped && { echo stopped; exit 0; }; sleep 5; done; echo TIMEOUT"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -108,14 +107,13 @@
         -512
       ],
       "id": "0cf8b944-a539-4c3d-afd7-bd7e9bce7069",
-      "name": "B5 - ai-node stop + poll",
+      "name": "B5 - AI node stop + poll",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -148,12 +146,12 @@
         -416
       ],
       "id": "23f23333-8873-48f0-98aa-748322e32e8e",
-      "name": "B4 - ai-node running?"
+      "name": "B4 - AI node running?"
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"ai-node status\""
+        "command": "=ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node status\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -162,7 +160,7 @@
         -416
       ],
       "id": "0758488f-362f-4de7-bd95-53b68e06f4b8",
-      "name": "B3 - ai-node status",
+      "name": "B3 - AI node status",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
@@ -206,7 +204,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ping -c 1 -W 3 192.0.2.10 > /dev/null 2>&1 && echo up || echo DOWN"
+        "command": "=ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\" >/dev/null 2>&1 && echo up || echo DOWN"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -215,14 +213,13 @@
         -320
       ],
       "id": "7eb90b37-0316-4ecd-8149-6b54af2a45ff",
-      "name": "B1 - Hypervisor reachable?1",
+      "name": "B1 - Hypervisor reachable?",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -241,14 +238,14 @@
               "type": "string"
             },
             {
-              "id": "60f251f7-5637-4332-bded-47f0b18763c6",
+              "id": "0add82b3-e9f9-48eb-99b6-b83cc23fb063",
               "name": "hypervisor",
               "value": "up",
               "type": "string"
             },
             {
-              "id": "ae03bfc4-1563-45cc-8803-0fe7c0046f94",
-              "name": "ai-node",
+              "id": "84ff9f0e-b306-4427-9ef2-3e4b6f7e3234",
+              "name": "ai_node",
               "value": "running",
               "type": "string"
             }
@@ -268,7 +265,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "for i in $(seq 1 24); do ssh hypervisor \"ai-node status\" 2>/dev/null | grep -q running && exit 0; sleep 5; done; exit 1"
+        "command": "=for i in $(seq 1 24); do ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node status\" 2>/dev/null | grep -q running && { echo running; exit 0; }; sleep 5; done; echo TIMEOUT"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -277,19 +274,18 @@
         -960
       ],
       "id": "18d52fbe-8479-429e-b8b3-8a21ac30c738",
-      "name": "A8 - Poll ai-node running",
+      "name": "A8 - Poll AI node running",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"ai-node start\""
+        "command": "=ssh {{ $env.KG_HYPERVISOR_HOST }} \"ai-node start\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -298,7 +294,7 @@
         -960
       ],
       "id": "28d92c37-23c3-4696-8531-edc3d2cb8537",
-      "name": "A7 - ai-node start",
+      "name": "A7 - AI node start",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
@@ -337,12 +333,12 @@
         -1040
       ],
       "id": "7a1da1b6-6797-47c8-869d-5248267c0012",
-      "name": "A6 - ai-node running?"
+      "name": "A6 - AI node running?"
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ssh hypervisor \"hypervisor-vm-arbiter status 101\""
+        "command": "=ssh {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\""
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -351,7 +347,7 @@
         -1040
       ],
       "id": "1742ae34-a6ba-44a8-9d4b-82275017ef61",
-      "name": "A5 - ai-node status",
+      "name": "A5 - AI node status",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
@@ -362,7 +358,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "for i in $(seq 1 18); do ssh -o ConnectTimeout=3 -o BatchMode=yes hypervisor \"echo up\" 2>/dev/null && exit 0; sleep 5; done; exit 1"
+        "command": "=for i in $(seq 1 18); do ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\" >/dev/null 2>&1 && { echo up; exit 0; }; sleep 5; done; echo DOWN"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -377,13 +373,12 @@
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "=wakeonlan {{ $env.HYPERVISOR_MAC }}"
+        "command": "=wakeonlan {{ $env.KG_HYPERVISOR_MAC || $env.HYPERVISOR_MAC }}"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -403,7 +398,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "ping -c 1 -W 3 192.0.2.10 > /dev/null 2>&1 && echo up || echo DOWN"
+        "command": "=ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\" >/dev/null 2>&1 && echo up || echo DOWN"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -418,8 +413,7 @@
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -620,12 +614,12 @@
         -944
       ],
       "id": "0e56df1a-bd94-4a97-a755-6348a135ddb6",
-      "name": "A6b - motore libero?"
+      "name": "A6b - Engine free?"
     },
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "for i in $(seq 1 30); do ssh -o ConnectTimeout=3 -o BatchMode=yes ai-node 'echo ready' 2>/dev/null && exit 0; sleep 5; done; exit 1"
+        "command": "=for i in $(seq 1 30); do ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_AI_HOST }} 'pi idle-check' >/dev/null 2>&1 && { echo ready; exit 0; }; sleep 5; done; echo TIMEOUT"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
@@ -634,14 +628,13 @@
         -960
       ],
       "id": "2c68b16a-b688-41f5-b475-ca245f7522fc",
-      "name": "A8b - Poll ai-node SSH ready",
+      "name": "A8b - Poll AI node SSH ready",
       "credentials": {
         "sshPrivateKey": {
           "id": "GJQjKzte7Hjdfz89",
           "name": "n8n container -> n8n-runner@server"
         }
-      },
-      "onError": "continueRegularOutput"
+      }
     },
     {
       "parameters": {
@@ -677,11 +670,363 @@
       ],
       "id": "02cbe4e9-3ad3-4d76-a0f6-e11831b34201",
       "name": "D - Output unknown mode"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6dbc3d9b-377a-4f85-9dad-93349dde5ea1",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "up",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        -688
+      ],
+      "id": "93b7f006-ecdc-4fa0-a437-e9f3bb84e026",
+      "name": "A4b - Hypervisor woke?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e76e59a0-0ab0-4cdb-813e-859bb0e3fd82",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "38b3c107-8bbc-4010-8e6d-6ef6dfb9e79e",
+              "name": "mode",
+              "value": "ensure-on",
+              "type": "string"
+            },
+            {
+              "id": "0addc09e-f93e-48d2-89ea-557482274f78",
+              "name": "blocked_by",
+              "value": "the hypervisor did not answer after Wake-on-LAN",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        -576
+      ],
+      "id": "655050ba-1518-4561-b034-e2010f6d13ef",
+      "name": "A4c - Output blocked (hypervisor)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "154686b5-9044-46d2-94f4-7342cf6201fe",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "running",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1088,
+        -848
+      ],
+      "id": "1eb21db0-bbac-43bd-aebe-f730d2a3925d",
+      "name": "A8c - AI node running?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "be8ade9c-b326-48ba-aee8-9caf1c33ab26",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "094e99d8-9481-4360-a4ef-2a9387f8b520",
+              "name": "mode",
+              "value": "ensure-on",
+              "type": "string"
+            },
+            {
+              "id": "ce673256-ac69-4d09-ba91-87f8c213a2c4",
+              "name": "blocked_by",
+              "value": "the AI node did not reach the running state",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        -736
+      ],
+      "id": "16513dbc-e936-483a-883e-94b7bde9cfcf",
+      "name": "A8d - Output blocked (start)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a955c9f3-c47a-4bde-ab28-420f3aba9b87",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "ready",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1296,
+        -1056
+      ],
+      "id": "3b4cf906-fb39-4fb6-9959-f1d56bfdcacc",
+      "name": "A8e - AI node answers?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "db0356c8-5eaf-4647-9394-a2f54259862e",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "1bff3211-4107-4f44-bbd8-13a7888fdaee",
+              "name": "mode",
+              "value": "ensure-on",
+              "type": "string"
+            },
+            {
+              "id": "255c0171-de79-4630-8e0a-e91161ee1314",
+              "name": "blocked_by",
+              "value": "the AI node is running but does not answer over SSH",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1488,
+        -944
+      ],
+      "id": "d180bf82-f059-4f19-ba59-22193e8fc65f",
+      "name": "A8f - Output blocked (ssh)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c3fd481f-9b8c-4988-990c-e37b7d95c7f8",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "stopped",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        -512
+      ],
+      "id": "3c379bfc-be29-4665-be7d-8917f012b310",
+      "name": "B5b - AI node stopped?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cc681de9-1d3a-4b56-a1cb-dc5e8bfd2652",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "0c892e8f-e10b-4dd1-849f-779dacb5bd2f",
+              "name": "mode",
+              "value": "ensure-off",
+              "type": "string"
+            },
+            {
+              "id": "8f075b1b-8650-44cc-939a-50ec90644639",
+              "name": "blocked_by",
+              "value": "the AI node did not stop, so the hypervisor stays on",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        -576
+      ],
+      "id": "dee2ccbc-f02e-434f-82ba-0455e2071c5a",
+      "name": "B5c - Output blocked (stop)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "810d7f02-3ad6-49bb-8064-32b6dd629edb",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "skip:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        -400
+      ],
+      "id": "5a0252f0-136d-460f-b3b3-3dff00193c50",
+      "name": "B6b - Standby skipped?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2b35c5b4-e7d9-4b25-bf91-1ccc7ee56c90",
+              "name": "status",
+              "value": "ok",
+              "type": "string"
+            },
+            {
+              "id": "cbac690b-c2b4-4e81-b027-69aed1ae5fd1",
+              "name": "mode",
+              "value": "ensure-off",
+              "type": "string"
+            },
+            {
+              "id": "e2dcb9b1-2c50-4784-b58a-5349baa0d1de",
+              "name": "hypervisor",
+              "value": "on",
+              "type": "string"
+            },
+            {
+              "id": "ab0b7d35-2629-492a-b5ec-71dfa679dfe4",
+              "name": "ai_node",
+              "value": "stopped",
+              "type": "string"
+            },
+            {
+              "id": "e71d131d-fabf-489c-94f5-32f3db89ff3f",
+              "name": "note",
+              "value": "={{ 'standby skipped: ' + ($json.stdout || '').trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        -496
+      ],
+      "id": "4115c909-c7a5-471e-8a18-0af18072b451",
+      "name": "B6c - Output kept on"
     }
   ],
   "pinData": {},
   "connections": {
-    "C1 - Status compatto": {
+    "C1 - Compact status": {
       "main": [
         [
           {
@@ -692,51 +1037,51 @@
         ]
       ]
     },
-    "B6 - Hypervisor standby": {
+    "B6 - Hypervisor standby if idle": {
       "main": [
         [
           {
-            "node": "B7 - Output OK",
+            "node": "B6b - Standby skipped?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B5 - ai-node stop + poll": {
+    "B5 - AI node stop + poll": {
       "main": [
         [
           {
-            "node": "B6 - Hypervisor standby",
+            "node": "B5b - AI node stopped?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B4 - ai-node running?": {
+    "B4 - AI node running?": {
       "main": [
         [
           {
-            "node": "B5 - ai-node stop + poll",
+            "node": "B5 - AI node stop + poll",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "B6 - Hypervisor standby",
+            "node": "B6 - Hypervisor standby if idle",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "B3 - ai-node status": {
+    "B3 - AI node status": {
       "main": [
         [
           {
-            "node": "B4 - ai-node running?",
+            "node": "B4 - AI node running?",
             "type": "main",
             "index": 0
           }
@@ -747,7 +1092,7 @@
       "main": [
         [
           {
-            "node": "B3 - ai-node status",
+            "node": "B3 - AI node status",
             "type": "main",
             "index": 0
           }
@@ -761,7 +1106,7 @@
         ]
       ]
     },
-    "B1 - Hypervisor reachable?1": {
+    "B1 - Hypervisor reachable?": {
       "main": [
         [
           {
@@ -772,51 +1117,51 @@
         ]
       ]
     },
-    "A8 - Poll ai-node running": {
+    "A8 - Poll AI node running": {
       "main": [
         [
           {
-            "node": "A8b - Poll ai-node SSH ready",
+            "node": "A8c - AI node running?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "A7 - ai-node start": {
+    "A7 - AI node start": {
       "main": [
         [
           {
-            "node": "A8 - Poll ai-node running",
+            "node": "A8 - Poll AI node running",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "A6 - ai-node running?": {
+    "A6 - AI node running?": {
       "main": [
         [
           {
-            "node": "A9 - Output OK",
+            "node": "A8b - Poll AI node SSH ready",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "A6b - motore libero?",
+            "node": "A6b - Engine free?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "A5 - ai-node status": {
+    "A5 - AI node status": {
       "main": [
         [
           {
-            "node": "A6 - ai-node running?",
+            "node": "A6 - AI node running?",
             "type": "main",
             "index": 0
           }
@@ -827,7 +1172,7 @@
       "main": [
         [
           {
-            "node": "A5 - ai-node status",
+            "node": "A4b - Hypervisor woke?",
             "type": "main",
             "index": 0
           }
@@ -860,7 +1205,7 @@
       "main": [
         [
           {
-            "node": "A5 - ai-node status",
+            "node": "A5 - AI node status",
             "type": "main",
             "index": 0
           }
@@ -885,14 +1230,14 @@
         ],
         [
           {
-            "node": "B1 - Hypervisor reachable?1",
+            "node": "B1 - Hypervisor reachable?",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "C1 - Status compatto",
+            "node": "C1 - Compact status",
             "type": "main",
             "index": 0
           }
@@ -917,11 +1262,11 @@
         ]
       ]
     },
-    "A6b - motore libero?": {
+    "A6b - Engine free?": {
       "main": [
         [
           {
-            "node": "A7 - ai-node start",
+            "node": "A7 - AI node start",
             "type": "main",
             "index": 0
           }
@@ -935,11 +1280,101 @@
         ]
       ]
     },
-    "A8b - Poll ai-node SSH ready": {
+    "A8b - Poll AI node SSH ready": {
+      "main": [
+        [
+          {
+            "node": "A8e - AI node answers?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A4b - Hypervisor woke?": {
+      "main": [
+        [
+          {
+            "node": "A5 - AI node status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A4c - Output blocked (hypervisor)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A8c - AI node running?": {
+      "main": [
+        [
+          {
+            "node": "A8b - Poll AI node SSH ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A8d - Output blocked (start)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A8e - AI node answers?": {
       "main": [
         [
           {
             "node": "A9 - Output OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A8f - Output blocked (ssh)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B5b - AI node stopped?": {
+      "main": [
+        [
+          {
+            "node": "B6 - Hypervisor standby if idle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B5c - Output blocked (stop)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B6b - Standby skipped?": {
+      "main": [
+        [
+          {
+            "node": "B6c - Output kept on",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B7 - Output OK",
             "type": "main",
             "index": 0
           }

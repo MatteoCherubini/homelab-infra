@@ -60,25 +60,28 @@ The Docker network above sits on a physical layout described nowhere else. It
 cost an afternoon to reconstruct from switch screenshots after a house move,
 which is the only argument this section needs.
 
-The server has **one** interface, `enp37s0`, addressed statically in
+The server has **one** interface, addressed statically in
 `/etc/netplan/50-cloud-init.yaml`:
 
 | | |
 |---|---|
-| Server | `192.0.2.20/24` on `enp37s0` |
-| Gateway and DNS | `192.0.2.1` — OPNsense, running on a ZimaBoard |
-| Workstation (`hypervisor`) | `192.0.2.10` |
+| Server | `<server-address>/24` on its one interface |
+| Gateway and DNS | `<gateway>` — an OPNsense firewall on a small board |
+| Hypervisor | `<hypervisor-address>` |
 
-Static rather than DHCP, because the address is a dependency: the UPS handler
-reaches the workstation by address through an SSH forced command, and a lease
-that moves breaks it silently. See [UPS orchestration](stacks/ups.md).
+Static rather than DHCP, because the addresses are dependencies: the UPS
+handler and the workflows reach the hypervisor through SSH forced commands,
+and a lease that moves breaks them silently. Each address is written in one
+place on the server — `n8n-runner`'s SSH aliases, `/etc/nut/kg-ups.env` —
+never in this repository. See [UPS orchestration](stacks/ups.md) and
+[the automation stack](stacks/automation.md#reaching-the-other-machines-roles-aliases-forced-commands).
 
 The segment is carried by a TP-Link Easy Smart switch with 802.1Q VLANs:
 
 | VLAN | Name | Untagged ports | Carries |
 |------|------|----------------|---------|
 | 1 | Default | 7, 8 | — |
-| **10** | **TRUSTED** | 2, 3, 4 | `192.0.2.0/24` — server, workstation |
+| **10** | **TRUSTED** | 2, 3, 4 | the trusted subnet — server, hypervisor |
 | 20 | IOT | 5, 6 | isolated devices |
 
 Port 1 is the trunk to the router, tagged on 10 and 20 and untagged on 1. The
@@ -92,11 +95,21 @@ that lands in the wrong port during a move looks exactly like a dead host.
 
 ## External access
 
-Two paths in, both terminating at the same place:
+**Nothing comes in.** The whole setup moves between places during the year,
+so the upstream router is never configured: no port forward, no exposed host,
+no dynamic DNS. Every path from outside is a connection the server opens
+itself:
 
-- **Nginx Proxy Manager** handles TLS and routes by hostname.
-- **Cloudflare Tunnel** reaches Cloudflare over an *outbound* connection, so
-  nothing has to be opened inbound on the router.
+- **Cloudflare Tunnel** for the public services, over an outbound connection.
+- **Tailscale** for administration, reaching the server only; the other
+  machines are reached through it by SSH (`ProxyJump`), with the laptop's keys.
+
+The firewall's WAN is a DHCP client with no inbound rule, which works behind
+any router, carrier-grade NAT included. Its internal subnets must not overlap
+the upstream router's, and common modem ranges are best avoided.
+
+Inside, **Nginx Proxy Manager** terminates TLS and routes by hostname; the
+firewall's DNS resolves the same hostnames to the server.
 
 Only the services that need to be reachable from outside are published. Admin
 surfaces are bound to loopback — Syncthing's GUI and API are on
