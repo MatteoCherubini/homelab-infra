@@ -1,20 +1,23 @@
 #!/bin/bash
 # =============================================================================
-# kg-ups-handler — blackout orchestration on SERVER (NUT: upssched CMDSCRIPT + upsmon SHUTDOWNCMD).
+# kg-ups-handler — blackout orchestration on the SERVER (NUT: upssched CMDSCRIPT + upsmon SHUTDOWNCMD).
 #
 # Strategy, driven by the actual power numbers of this homelab:
-#   hypervisor (GPU, up to ~400W)  = the battery hog and the slowest to stop  -> goes down EARLY,
-#                               ~60s after the power fails (rides out flickers, no more).
-#   server (~80W)              = light load -> keeps running on battery for a long time once
-#                               hypervisor is off, so it stays up to notify and be the last to go.
-#   server goes down at LOWBATT, via upsmon's SHUTDOWNCMD (the standard NUT path, which also
+#   hypervisor (GPU, up to ~400W) = the battery hog and the slowest to stop -> goes down EARLY,
+#                                   ~60s after the power fails (rides out flickers, no more).
+#   server (~80W)                 = light load -> keeps running on battery for a long time once
+#                                   the hypervisor is off, so it stays up to notify and be the last to go.
+#   The server goes down at LOWBATT, via upsmon's SHUTDOWNCMD (the standard NUT path, which also
 #   arms the killpower flag so the UPS cuts output and everything reboots on AC restore).
 #
 # Why not decide on battery.runtime: this model's runtimecal is calibrated at 4%/8% load, so
 # any runtime estimate under real load is fiction. Time-since-ONBATT is honest; runtime is not.
 #
-# Security: the ntfy token lives in /etc/nut/kg-ups.env (chmod 0600, owned by root).
-#   printf 'NTFY_TOKEN=tk_...\n' | sudo tee /etc/nut/kg-ups.env && sudo chmod 0600 /etc/nut/kg-ups.env
+# Configuration lives in /etc/nut/kg-ups.env (chmod 0600, owned by root), never in this file:
+#   KG_UPS_HYPERVISOR=<ssh destination>   user@address, or an alias in nut's ~/.ssh/config
+#   NTFY_TOKEN=tk_...
+# On the hypervisor, nut's key carries a forced command (n8n-qm-wrap) that accepts
+# `hypervisor-emergency-shutdown [--dry-run]`.
 #
 # Install ON THE SERVER: install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
 # Full runbook: docs/stacks/ups.md
@@ -23,16 +26,13 @@
 # =============================================================================
 set -u
 
-# ── Config (overridable via env) ─────────────────────────────────────────────
-HYPERVISOR_IP="${HYPERVISOR_IP:-192.0.2.10}"
-HYPERVISOR_SSH_USER="${HYPERVISOR_SSH_USER:-root}"
+# ── Config ───────────────────────────────────────────────────────────────────
 COMPOSE_UNIT="${COMPOSE_UNIT:-homelab-compose.service}"
 COMPOSE_DIR="${COMPOSE_DIR:-/opt/homelab-infra}"
 DRY="${KG_UPS_DRYRUN:-0}"
-
-# ── ntfy (token from a separate 0600 file — never hardcoded) ─────────────────
 NTFY_URL="${NTFY_URL:-http://127.0.0.1:8091/homelab-power}"
 NTFY_TOKEN="${NTFY_TOKEN:-}"
+KG_UPS_HYPERVISOR="${KG_UPS_HYPERVISOR:-}"
 [ -r /etc/nut/kg-ups.env ] && . /etc/nut/kg-ups.env
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,32 +54,45 @@ notify() {  # $1=title  $2=body  [$3=priority]  [$4=tags]
     || log "notify failed (expected if internet/ntfy is down)"
 }
 
+# In a dry run the shutdown is still asked for, with --dry-run, so the test
+# goes through the forced command for real: a wrapper that stopped accepting
+# the verb fails the test instead of passing it.
 ssh_hypervisor() {
-  run ssh -i /var/lib/nut/.ssh/id_ed25519 \
+  local verb=$1
+  [ "$DRY" = "1" ] && verb="$verb --dry-run"
+  ssh -i /var/lib/nut/.ssh/id_ed25519 \
       -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      "${HYPERVISOR_SSH_USER}@${HYPERVISOR_IP}" "$@"
+      "$KG_UPS_HYPERVISOR" "$verb"
 }
 
 # ── Events ───────────────────────────────────────────────────────────────────
+# The second name of the first two events is the one upssched.conf and
+# upsmon.conf still send; they go once those files use the role names.
 case "${1:-}" in
 
-  hypervisor-down)
-    notify "Power cut — shutting hypervisor down" \
-           "Mains down for >60s. hypervisor is shutting down now; server stays up on battery." \
+  hypervisor-down|hypervisor-down)
+    notify "Power cut — shutting the hypervisor down" \
+           "Mains down for >60s. The hypervisor is shutting down now; the server stays up on battery." \
            "urgent" "electric_plug"
-    log "on battery -> emergency shutdown of hypervisor"
+    if [ -z "$KG_UPS_HYPERVISOR" ]; then
+      notify "UPS: hypervisor not configured" \
+             "KG_UPS_HYPERVISOR is empty in /etc/nut/kg-ups.env: the hypervisor was NOT shut down." \
+             "urgent" "warning"
+      exit 1
+    fi
+    log "on battery -> emergency shutdown of the hypervisor (${KG_UPS_HYPERVISOR})"
     if ssh_hypervisor hypervisor-emergency-shutdown; then
       log "hypervisor shutdown issued"
     else
-      log "hypervisor unreachable or already off (nothing to do)"
+      log "hypervisor unreachable, already off, or the verb was refused"
     fi
     ;;
 
-  server-down)
-    notify "Battery low — shutting server down" \
+  server-down|server-down)
+    notify "Battery low — shutting the server down" \
            "LOWBATT reached. Compose down, then halt. Everything comes back by itself on mains restore." \
            "urgent" "battery"
-    log "low battery -> stopping stacks and powering off server"
+    log "low battery -> stopping stacks and powering off the server"
     if systemctl list-unit-files 2>/dev/null | grep -q "^${COMPOSE_UNIT}"; then
       run systemctl stop "$COMPOSE_UNIT" || log "WARN: systemctl stop ${COMPOSE_UNIT} failed"
     else
@@ -92,13 +105,13 @@ case "${1:-}" in
 
   notify-onbatt)
     notify "Power cut — running on battery" \
-           "Mains down. hypervisor shuts down in ~60s; server stays up on battery." \
+           "Mains down. The hypervisor shuts down in ~60s; the server stays up on battery." \
            "urgent" "electric_plug"
     ;;
 
   notify-online)
     notify "Mains restored" \
-           "Power is back. hypervisor wakes itself on the next ingest (WoL)." \
+           "Power is back. The hypervisor wakes itself on the next ingest (WoL)." \
            "default" "white_check_mark"
     ;;
 
