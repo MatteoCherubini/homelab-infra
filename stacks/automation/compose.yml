@@ -14,6 +14,10 @@ x-kg-env: &kg-env
   # ssh $KG_AI_HOST.
   KG_AI_HOST: ${KG_AI_HOST}
   KG_HYPERVISOR_HOST: ${KG_HYPERVISOR_HOST}
+  # The AI node's guest id on the hypervisor, and the hypervisor's Wake-on-LAN
+  # address: what Power Manager asks the arbiter about, and what it wakes.
+  KG_AI_VMID: ${KG_AI_VMID}
+  KG_HYPERVISOR_MAC: ${KG_HYPERVISOR_MAC}
   # Unix account owning the genome vaults, reached with sudo -u by the watcher.
   KG_SERVICE_USER: ${KG_SERVICE_USER}
   # CONTAINER ADDRESS, not the public hostname. `forgejo` is in
@@ -103,7 +107,8 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       # ── Encryption ────────────────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
-      HYPERVISOR_MAC: ${HYPERVISOR_MAC}
+      # Read only by the previous Power Manager; goes once KG_HYPERVISOR_MAC is set everywhere.
+      HYPERVISOR_MAC: ${HYPERVISOR_MAC:-}
       # ── Syncthing ─────────────────────────────────────────────────────────
       SYNCTHING_URL: ${SYNCTHING_URL}
       SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
@@ -166,7 +171,8 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       GENERIC_TIMEZONE: ${TZ}
-      HYPERVISOR_MAC: ${HYPERVISOR_MAC}
+      # Read only by the previous Power Manager; goes once KG_HYPERVISOR_MAC is set everywhere.
+      HYPERVISOR_MAC: ${HYPERVISOR_MAC:-}
       # ── Runtime limits ────────────────────────────────────────────
       # The copy that matters most: this is the process that runs the nodes.
       N8N_RUNNERS_TASK_TIMEOUT: ${N8N_RUNNERS_TASK_TIMEOUT}
