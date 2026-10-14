@@ -1,6 +1,6 @@
 # UPS orchestration
 
-Ordered shutdown, workstation → server, on mains failure, with automatic
+Ordered shutdown, hypervisor → server, on mains failure, with automatic
 recovery. Built on **NUT** (Network UPS Tools), **systemd** and an **SSH
 forced command**.
 
@@ -41,17 +41,19 @@ this document describes well enough to rebuild.
          │                         │  │ nut-server│  │
     ┌────┴────┐                    │  │ upsmon    │  │
     │ Schuko  │◄── server (~80W)    │  │ upssched  │  │
-    │   +     │◄── hypervisor (~400W)   │  └───────────┘  │
+    │   +     │◄── hypervisor      │  └───────────┘  │
+    │         │    (~400W)         │                 │
     │   IEC   │◄── switch          │                 │
     └────┬────┘◄── modem (opt.)   │  kg-ups-handler │
          │                         └────────┬────────┘
          │                                  │ SSH (nut)
          │                         ┌────────┴────────┐
-         └────────────────────────►│      hypervisor      │
+         └────────────────────────►│   hypervisor    │
                                    │  (Proxmox VE)   │
                                    │                 │
-                                   │ hypervisor-emergency-│
-                                   │    shutdown     │
+                                   │ hypervisor-     │
+                                   │ emergency-      │
+                                   │ shutdown        │
                                    └─────────────────┘
 ```
 
@@ -78,7 +80,7 @@ The 60-second grace period avoids reacting to brief mains flickers.
 | server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
 | hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
 
-> ⚠️ **Without the switch on the UPS**, server cannot tell hypervisor to shut down during an outage.
+> ⚠️ **Without the switch on the UPS**, the server cannot tell the hypervisor to shut down during an outage.
 
 ---
 
@@ -114,7 +116,7 @@ pollinterval = 2
     default.output.voltage.nominal = 230.0
 ```
 
-> `runtimecal` is calibrated at 4–8% load (~50–100W). With hypervisor running (~33% = ~400W) the `battery.runtime` estimate is **optimistic and unreliable** — the shutdown logic keys off time since `ONBATT`, not off runtime.
+> `runtimecal` is calibrated at 4–8% load (~50–100W). With the hypervisor running (~33% = ~400W) the `battery.runtime` estimate is **optimistic and unreliable** — the shutdown logic keys off time since `ONBATT`, not off runtime.
 
 ### `/etc/nut/nut.conf`
 
@@ -152,6 +154,11 @@ NOTIFYFLAG LOWBATT SYSLOG+WALL+EXEC
 
 > `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
 
+> The handler also accepts the event names this setup used before roles,
+> `server-down` and `hypervisor-down`, so `upsmon.conf` and `upssched.conf` can be
+> switched to the names above at any time, not in the same minute as the
+> handler.
+
 ### `/etc/nut/upssched.conf`
 
 ```ini
@@ -176,44 +183,50 @@ sudo upsc server-ups@localhost
 
 ## 🔐 SSH nut → hypervisor (forced command)
 
-**The problem:** `upssched` runs as the `nut` user, not as root. To shut hypervisor down over SSH, `nut` needs a key and hypervisor must accept it through the `n8n-qm-wrap` wrapper.
+**The problem:** `upssched` runs as the `nut` user, not as root. To shut the hypervisor down over SSH, `nut` needs a key and the hypervisor must accept it through its forced command, `n8n-qm-wrap`.
 
-### On server: generate a key for `nut`
+### On the server: a key for `nut`
 
 ```bash
 sudo mkdir -p /var/lib/nut/.ssh
 sudo chown nut:nut /var/lib/nut /var/lib/nut/.ssh
 sudo chmod 700 /var/lib/nut/.ssh
 
-sudo -u nut ssh-keygen -t ed25519 -f /var/lib/nut/.ssh/id_ed25519 -N "" -C "nut@server-ups"
+sudo -u nut ssh-keygen -t ed25519 -f /var/lib/nut/.ssh/id_ed25519 -N "" -C "nut@<server>"
 ```
 
-### On hypervisor: add the case to the wrapper
+### On the hypervisor: the wrapper and the scripts
 
-Edit `/usr/local/sbin/n8n-qm-wrap` and insert this **before** the `*)` branch:
+The wrapper and the scripts it runs come from the knowledge-genome-orchestrator
+(`deploy/hypervisor`): `n8n-qm-wrap` at `/usr/local/sbin/n8n-qm-wrap`,
+`hypervisor-emergency-shutdown` and `hypervisor-vm-arbiter` in
+`/usr/local/bin`. The wrapper already accepts
+`hypervisor-emergency-shutdown [--dry-run]`; nothing is edited by hand.
 
-```bash
-  "hypervisor-emergency-shutdown"|"hypervisor-emergency-shutdown --dry-run")
-    logger -t n8n-qm-wrap "ok: ${cmd}"
-    case "$cmd" in
-      *--dry-run) exec /usr/local/bin/hypervisor-emergency-shutdown --dry-run ;;
-      *)          exec /usr/local/bin/hypervisor-emergency-shutdown ;;
-    esac
-    ;;
-```
+### On the hypervisor: authorized_keys
 
-### On hypervisor: authorized_keys
-
-Add to `/root/.ssh/authorized_keys`:
+On Proxmox `/root/.ssh/authorized_keys` is a link to
+`/etc/pve/priv/authorized_keys`. Add:
 
 ```text
-command="/usr/local/sbin/n8n-qm-wrap",no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAAC3NzaC... nut@server-ups
+command="/usr/local/sbin/n8n-qm-wrap",no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAAC3NzaC... nut@<server>
+```
+
+### On the server: where the handler finds the hypervisor
+
+`/etc/nut/kg-ups.env`, mode 0600, owned by root — never in the handler, never
+in `.env`:
+
+```bash
+KG_UPS_HYPERVISOR=root@<hypervisor-address>
+NTFY_TOKEN=tk_...
 ```
 
 ### Verify
 
 ```bash
-sudo -u nut ssh -o ConnectTimeout=5 -o BatchMode=yes root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"
+sudo -u nut ssh -i /var/lib/nut/.ssh/id_ed25519 -o ConnectTimeout=5 -o BatchMode=yes \
+  root@<hypervisor-address> "hypervisor-emergency-shutdown --dry-run"
 ```
 
 It must print the dry-run output **without** `unauthorized command`.
@@ -230,22 +243,22 @@ Source: `host/kg-ups-handler`. Install with:
 sudo install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
 ```
 
-The ntfy token it uses lives in `/etc/nut/kg-ups.env`, mode 0600, owned by
-root — never in `.env`, which is readable by the user running Compose.
+It reads `KG_UPS_HYPERVISOR` and the ntfy token from `/etc/nut/kg-ups.env`.
+With `KG_UPS_HYPERVISOR` empty it shuts nothing down and says so, urgently.
 
 Handles:
-- `hypervisor-down` → SSH to hypervisor for a graceful shutdown
+- `hypervisor-down` → SSH to the hypervisor for a graceful shutdown
 - `server-down` → `compose down` plus halt (called by upsmon at LOWBATT)
 - `notify-onbatt` / `notify-online` → ntfy notifications
 
-> **Note:** the SSH command sent to hypervisor must be **the bare name** (`hypervisor-emergency-shutdown`), not the full path — the `n8n-qm-wrap` wrapper matches on names.
+> **Note:** the SSH command sent to the hypervisor must be **the bare name** (`hypervisor-emergency-shutdown`), not the full path — the `n8n-qm-wrap` wrapper matches on names.
 
-### `hypervisor-emergency-shutdown` (hypervisor)
+### `hypervisor-emergency-shutdown` (on the hypervisor)
 
 On Proxmox it runs:
 1. `qm shutdown` for every running guest (graceful, 90s timeout)
 2. a forced `qm stop` for anything still up
-3. `sync` followed by `shutdown -h now`
+3. `shutdown -h now`
 
 ---
 
@@ -293,20 +306,23 @@ Expected: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
 ### 2. SSH nut → hypervisor
 
 ```bash
-sudo -u nut ssh root@192.0.2.10 "hypervisor-emergency-shutdown --dry-run"
+sudo -u nut ssh -i /var/lib/nut/.ssh/id_ed25519 root@<hypervisor-address> "hypervisor-emergency-shutdown --dry-run"
 ```
 
 ### 3. Dry run
 
-On server:
+On the server:
 ```bash
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler hypervisor-down
 KG_UPS_DRYRUN=1 /usr/local/bin/kg-ups-handler server-down
 ```
 
-On hypervisor:
+The first one goes through the hypervisor's forced command for real, with
+`--dry-run`: it fails if the wrapper stopped accepting the verb.
+
+On the hypervisor:
 ```bash
-KG_UPS_DRYRUN=1 /usr/local/bin/hypervisor-emergency-shutdown --dry-run
+/usr/local/bin/hypervisor-emergency-shutdown --dry-run
 ```
 
 ### 4. Simulated event (FSD)
@@ -319,9 +335,9 @@ sudo upsmon -c fsd
 
 ### 5. Real 60-second test
 
-1. Pull the UPS plug from the wall, with hypervisor running.
+1. Pull the UPS plug from the wall, with the hypervisor running.
 2. Wait ~60 seconds.
-3. **hypervisor** must shut down cleanly (guests → host halt).
+3. **The hypervisor** must shut down cleanly (guests → host halt).
 4. **server** must stay up.
 5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
 
@@ -343,9 +359,9 @@ sudo upsmon -c fsd
 | `Cannot load USB library` | `libusb-1.0-0-dev` missing | `sudo apt install libusb-1.0-0-dev` |
 | `Duplicate driver instance` | Stale PID file | `sudo rm -f /run/nut/*.pid` |
 | `upsd disabled` | `MODE` not set in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
-| `unauthorized command` on hypervisor | `hypervisor-emergency-shutdown` not whitelisted in the wrapper | Add the case to `/usr/local/sbin/n8n-qm-wrap` |
+| `unauthorized command` on the hypervisor | The wrapper does not accept `hypervisor-emergency-shutdown` | Install the orchestrator's `deploy/hypervisor/n8n-qm-wrap` at `/usr/local/sbin/n8n-qm-wrap` |
 | `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
-| hypervisor does not shut down | Switch not on the UPS | Move the switch onto the UPS |
+| The hypervisor does not shut down | Switch not on the UPS, or `KG_UPS_HYPERVISOR` empty | Move the switch onto the UPS; set it in `/etc/nut/kg-ups.env` |
 | server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
 | Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
@@ -365,10 +381,8 @@ Verified on the server on 2026-09-21:
 
 Not verified from here, and worth re-checking before relying on it:
 
-- [ ] The `hypervisor-emergency-shutdown` case is present in
-      `/usr/local/sbin/n8n-qm-wrap` on the workstation
-- [ ] `sudo -u nut ssh root@<workstation> "hypervisor-emergency-shutdown --dry-run"`
-      still succeeds — the forced command is the part that silently rots, because
+- [ ] `KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down` reaches the
+      hypervisor's forced command and prints its dry run — the forced command is the part that silently rots, because
       nothing exercises it until a real outage does
 - [ ] A real 60-second test: workstation down cleanly, server still up
 - [ ] Killpower at LOWBATT: the UPS cuts its output and the server powers back
@@ -380,11 +394,11 @@ moment it is needed and never before.
 
 ## 📝 Operational notes
 
-- **Do not trust `battery.runtime`** while hypervisor is running: the calibration is for low load.
+- **Do not trust `battery.runtime`** while the hypervisor is running: the calibration is for low load.
 - **Rejected work is not lost**: the ingest queue is persistent, and `genome-reconcile` picks it up once power is back.
 - **Notifications are best-effort**: if the modem is not on the UPS the ntfy push will not go out during an outage — the shutdown still proceeds.
-- **OPNsense** is not in the critical path (server and hypervisor share the same /24). If it is not on the UPS it drops and comes back by itself.
+- **The firewall** is not in the critical path (the server and the hypervisor share one subnet). If it is not on the UPS it drops and comes back by itself.
 
 ---
 
-*Written for this homelab's server/workstation pair — Green Cell PowerProof 2000VA.*
+*Written for this homelab's server/hypervisor pair — Green Cell PowerProof 2000VA.*

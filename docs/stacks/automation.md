@@ -99,6 +99,64 @@ being switched off.
 
 ---
 
+## Reaching the other machines: roles, aliases, forced commands
+
+The workflows never name a machine. A node's SSH credential reaches
+`n8n-runner` on this host; the command then runs `ssh $KG_HYPERVISOR_HOST …` or
+`ssh $KG_AI_HOST …`. The two values are **aliases** in `n8n-runner`'s
+`~/.ssh/config`, and that file is the only place that knows which machine sits
+behind a role:
+
+```
+Host <hypervisor-alias>
+    HostName <hypervisor-address>
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+
+Host <ai-node-alias>
+    HostName <ai-node-address>
+    User <service-user>
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+It is backed up with the `work` set (`/home/n8n-runner/.ssh`). Cloned onto
+another setup, this repository needs those two aliases and the variables below;
+nothing in a workflow changes. `make test` fails on a workflow that reaches a
+machine by name or holds a private address.
+
+**Both keys carry a forced command** on the other side — `n8n-qm-wrap` on the
+hypervisor, `n8n-pi-wrap` on the AI node, both from the knowledge-genome
+orchestrator's `deploy/`. Only their verbs run; anything else answers
+`unauthorized command`. So a probe has to be a verb too: Power Manager asks the
+hypervisor `hypervisor-vm-arbiter status $KG_AI_VMID` and the AI node
+`pi idle-check`, both read-only. Its earlier probes were `echo up` and
+`echo ready`, which no wrapper ever accepted: they failed every time, and the
+step after them ran anyway (found on 2026-10-14, after an ingest started against
+a node that was not answering).
+
+| Variable | What it is |
+|----------|------------|
+| `KG_HYPERVISOR_HOST` | The hypervisor's alias in `n8n-runner`'s SSH config |
+| `KG_AI_HOST` | The AI node's alias in `n8n-runner`'s SSH config |
+| `KG_AI_VMID` | The AI node's guest id on the hypervisor. The wrapper's `ai-node` verbs act on one fixed guest; this must be the same one |
+| `KG_HYPERVISOR_MAC` | The hypervisor's Wake-on-LAN address |
+
+### Power Manager
+
+Called as a sub-workflow with `mode` set to `ensure-on`, `ensure-off` or
+`status`. It answers `status: ok`, or `status: blocked` with `blocked_by`, and
+every caller refuses anything blocked.
+
+- **Every wait checks what it waited for.** The hypervisor not waking, the AI
+  node not reaching `running`, or not answering over SSH once running, each
+  ends in `blocked` — never in `ok`. A node that Proxmox reports as running is
+  not taken as answering: the SSH check runs on that branch too.
+- **`ensure-off` never suspends by itself.** It stops the AI node, waits for it
+  to stop (or answers `blocked`, leaving the hypervisor on), then asks the
+  hypervisor's arbiter for `standby-if-idle`. The arbiter refuses while any
+  guest is not stopped, so a desktop guest in use keeps the hypervisor on:
+  `status: ok`, `hypervisor: on`, with the arbiter's answer in `note`.
+
 ## Syncthing
 
 Syncthing lives in this stack rather than in `tools` because it works as a pair
