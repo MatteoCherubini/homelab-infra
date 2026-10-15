@@ -128,6 +128,45 @@ else
   bad "broken links"; printf '%s\n' "$out" | sed 's/^/      /'
 fi
 
+# ── 6b. Machines by role, never by address ───────────────────────────────
+# The workflows reach other machines through SSH aliases that come from .env,
+# and the scripts installed on the host read their targets from their own
+# configuration. An address or a host name written into either is a value
+# that is silently wrong on the next machine this repository is cloned to.
+title "Machines are reached by role"
+if out=$(python3 - <<'PY' 2>&1
+import glob, json, re, sys
+bad = 0
+private = re.compile(r'\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b')
+ssh_cmd = re.compile(r'(?<![\w-])ssh\s+([^;|&]*)')
+with_arg = set('oiplFJEbcDLRWSOQem')
+for f in sorted(glob.glob('workflows/*.json')):
+    for n in json.load(open(f, encoding='utf-8')).get('nodes', []):
+        params = n.get('parameters', {})
+        for m in ssh_cmd.finditer(params.get('command', '')):
+            toks, i = m.group(1).split(), 0
+            while i < len(toks) and toks[i].startswith('-'):
+                i += 2 if len(toks[i]) == 2 and toks[i][1] in with_arg else 1
+            target = toks[i] if i < len(toks) else ''
+            if not target.startswith('{{'):
+                print(f"{f}: '{n['name']}' reaches '{target}' by name, not through $env")
+                bad += 1
+        for hit in private.findall(json.dumps(params)):
+            print(f"{f}: '{n['name']}' holds the address {hit}")
+            bad += 1
+for f in sorted(glob.glob('host/*')):
+    for i, line in enumerate(open(f, encoding='utf-8'), 1):
+        for hit in private.findall(line):
+            print(f"{f}:{i}: holds the address {hit}")
+            bad += 1
+sys.exit(1 if bad else 0)
+PY
+); then
+  ok "workflows and host scripts name no machine and no private address"
+else
+  bad "a machine reached by name or address"; printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
 # ── 7. No committed secrets ──────────────────────────────────────────────
 # The check that matters before making the repository public. It looks only at
 # TRACKED files: ignored ones (.env and friends) can and should hold real
