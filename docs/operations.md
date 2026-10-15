@@ -109,10 +109,14 @@ It needs the power to the server to actually drop. Unplugging the UPS from the
 wall does not do it — that is what the UPS is for. After a long outage the
 UPS's *killpower* does it: NUT halts the server at low battery and tells the
 UPS to cut its outlets and restore them when mains returns
-([UPS orchestration](stacks/ups.md)). Until that has been tested, an outage
-that ends after the server halted but before the battery ran out leaves the
-server halted, and somebody has to press the button. So this is still the
-first thing to check, not the last.
+([UPS orchestration](stacks/ups.md)). Tested on 2026-10-15 with a forced
+shutdown: outlets dark 30 seconds after the halt, back three minutes later,
+the server up on its own.
+
+It rests on two things that fail without a sound, so they are the first to
+check when the server stays off after an outage: the USB cable from the UPS
+(`lsusb`; the health check's "ups" line), and `POWERDOWNFLAG` in
+`upsmon.conf`, without which the UPS is never told to cut anything.
 
 It matters because a machine in that state **looks alive from outside**. The
 power supply keeps the network card's PHY energised on standby, so the switch
