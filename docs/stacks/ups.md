@@ -439,7 +439,6 @@ Verified on 2026-10-15:
       wrote to the journal, and `make healthcheck` still passed. A manual
       `upscmd -l` found it. That is why the link is now watched (the last three
       lines of `upssched.conf`) and checked (`make healthcheck`, "Power")
-
 - [x] The link watch (test procedure, section 7): unplugged for over a minute,
       "UPS link lost", `ups` red in the health check, then "UPS link back"
 - [x] The grace period, live (section 5): on battery at 15:50:14 UTC, the
