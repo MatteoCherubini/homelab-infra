@@ -378,7 +378,8 @@ Harmless: nothing is shut down.
 
 1. Unplug the USB cable at the server and wait more than a minute.
 2. Expected: the notice "UPS link lost", and `upsc server-ups ups.status`
-   answers `Driver not connected`.
+   answers with an error — `Data stale` while the driver is still waiting for
+   the device, `Driver not connected` once it has given up.
 3. Plug it back in. Within about 15 seconds `ups.status` is `OL` again, and the
    notice "UPS link back" arrives.
 
