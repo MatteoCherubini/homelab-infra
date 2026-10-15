@@ -4,7 +4,7 @@
 #
 # Strategy, driven by the actual power numbers of this homelab:
 #   hypervisor (GPU, up to ~400W) = the battery hog and the slowest to stop -> goes down EARLY,
-#                                   ~60s after the power fails (rides out flickers, no more).
+#                                   once the grace period set in upssched.conf has passed.
 #   server (~80W)                 = light load -> keeps running on battery for a long time once
 #                                   the hypervisor is off, so it stays up to notify and be the last to go.
 #   The server goes down at LOWBATT, via upsmon's SHUTDOWNCMD (the standard NUT path, which also
@@ -73,7 +73,7 @@ case "${1:-}" in
 
   hypervisor-down|hypervisor-down)
     notify "Power cut — shutting the hypervisor down" \
-           "Mains down for >60s. The hypervisor is shutting down now; the server stays up on battery." \
+           "Mains down past the grace period. The hypervisor is shutting down now; the server stays up on battery." \
            "urgent" "electric_plug"
     if [ -z "$KG_UPS_HYPERVISOR" ]; then
       notify "UPS: hypervisor not configured" \
@@ -106,7 +106,7 @@ case "${1:-}" in
 
   notify-onbatt)
     notify "Power cut — running on battery" \
-           "Mains down. The hypervisor shuts down in ~60s; the server stays up on battery." \
+           "Mains down. The hypervisor shuts down if it lasts past the grace period; the server stays up on battery." \
            "urgent" "electric_plug"
     ;;
 
