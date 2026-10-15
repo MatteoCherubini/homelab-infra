@@ -61,10 +61,13 @@ this document describes well enough to rebuild.
 
 | Node | Load | Shutdown time | Decision |
 |------|------|---------------|----------|
-| **hypervisor** (GPU) | up to ~400W | slow (guests → host) | **goes down first**, at `ONBATT + 60s` |
+| **hypervisor** (GPU) | up to ~400W | slow (guests → host) | **goes down first**, at `ONBATT` + the grace period |
 | **server** | ~80W | fast | **stays up**, goes down at `LOWBATT` |
 
-The 60-second grace period avoids reacting to brief mains flickers.
+The grace period is the `START-TIMER` value in `upssched.conf` — 180 seconds
+here. It rides out flickers and short outages; a shorter one leaves more battery
+for the server. The handler's messages do not repeat the number, so changing it
+is one edit.
 
 ---
 
@@ -166,7 +169,7 @@ CMDSCRIPT /usr/local/bin/kg-ups-handler
 PIPEFN /run/nut/upssched.pipe
 LOCKFN /run/nut/upssched.lock
 
-AT ONBATT  * START-TIMER  hypervisor-down 60
+AT ONBATT  * START-TIMER  hypervisor-down 180
 AT ONBATT  * EXECUTE      notify-onbatt
 AT ONLINE  * CANCEL-TIMER hypervisor-down
 AT ONLINE  * EXECUTE      notify-online
@@ -334,10 +337,10 @@ On the hypervisor:
 sudo upsmon -c fsd
 ```
 
-### 5. Real 60-second test
+### 5. Real grace-period test
 
 1. Pull the UPS plug from the wall, with the hypervisor running.
-2. Wait ~60 seconds.
+2. Wait past the grace period (180 seconds here).
 3. **The hypervisor** must shut down cleanly (guests → host halt).
 4. **server** must stay up.
 5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
@@ -385,7 +388,7 @@ Not verified from here, and worth re-checking before relying on it:
 - [ ] `KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down` reaches the
       hypervisor's forced command and prints its dry run — the forced command is the part that silently rots, because
       nothing exercises it until a real outage does
-- [ ] A real 60-second test: workstation down cleanly, server still up
+- [ ] A real grace-period test: hypervisor down cleanly, server still up
 - [ ] Killpower at LOWBATT: the UPS cuts its output and the server powers back
       on by itself
 
