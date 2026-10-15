@@ -8,6 +8,26 @@
 
 ---
 
+## Who can reach it
+
+Only the server itself. The port is published on `127.0.0.1`, and n8n reaches
+the service on the Docker network as `ollama:11434`.
+
+Ollama has no authentication: anyone who can reach the port can run any model,
+pull new ones and delete the existing ones. Published on every interface, that
+was every device on the LAN and on the tailnet, while the only callers were n8n
+and the health check. A week of its request log, read before closing it, showed
+exactly those two.
+
+From another machine, when it is really needed, an SSH tunnel does it without
+opening anything:
+
+```bash
+ssh -N -L 11434:127.0.0.1:11434 <server>
+```
+
+---
+
 ## GPU reservation
 
 Ollama holds an NVIDIA device reservation for one GPU with the `gpu`
