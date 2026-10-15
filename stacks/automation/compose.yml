@@ -107,8 +107,6 @@ services:
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       # ── Encryption ────────────────────────────────────────────────────────
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
-      # Read only by the previous Power Manager; goes once KG_HYPERVISOR_MAC is set everywhere.
-      HYPERVISOR_MAC: ${HYPERVISOR_MAC:-}
       # ── Syncthing ─────────────────────────────────────────────────────────
       SYNCTHING_URL: ${SYNCTHING_URL}
       SYNCTHING_API_KEY: ${SYNCTHING_API_KEY}
@@ -171,8 +169,6 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
       GENERIC_TIMEZONE: ${TZ}
-      # Read only by the previous Power Manager; goes once KG_HYPERVISOR_MAC is set everywhere.
-      HYPERVISOR_MAC: ${HYPERVISOR_MAC:-}
       # ── Runtime limits ────────────────────────────────────────────
       # The copy that matters most: this is the process that runs the nodes.
       N8N_RUNNERS_TASK_TIMEOUT: ${N8N_RUNNERS_TASK_TIMEOUT}

@@ -4,7 +4,7 @@
 #
 # Strategy, driven by the actual power numbers of this homelab:
 #   hypervisor (GPU, up to ~400W) = the battery hog and the slowest to stop -> goes down EARLY,
-#                                   ~60s after the power fails (rides out flickers, no more).
+#                                   once the grace period set in upssched.conf has passed.
 #   server (~80W)                 = light load -> keeps running on battery for a long time once
 #                                   the hypervisor is off, so it stays up to notify and be the last to go.
 #   The server goes down at LOWBATT, via upsmon's SHUTDOWNCMD (the standard NUT path, which also
@@ -13,7 +13,8 @@
 # Why not decide on battery.runtime: this model's runtimecal is calibrated at 4%/8% load, so
 # any runtime estimate under real load is fiction. Time-since-ONBATT is honest; runtime is not.
 #
-# Configuration lives in /etc/nut/kg-ups.env (chmod 0600, owned by root), never in this file:
+# Configuration lives in /etc/nut/kg-ups.env (root:nut, mode 0640: upssched runs this as nut),
+# never in this file:
 #   KG_UPS_HYPERVISOR=<ssh destination>   user@address, or an alias in nut's ~/.ssh/config
 #   NTFY_TOKEN=tk_...
 # On the hypervisor, nut's key carries a forced command (n8n-qm-wrap) that accepts
@@ -21,7 +22,9 @@
 #
 # Install ON THE SERVER: install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
 # Full runbook: docs/stacks/ups.md
-# Called as:  kg-ups-handler <event>     (hypervisor-down | server-down | notify-onbatt | notify-online)
+# Called as:  kg-ups-handler <event>
+#   hypervisor-down | server-down | notify-onbatt | notify-online
+#   notify-commbad | notify-commok | notify-nocomm   (the server cannot read the UPS)
 # Test (no shutdown):  KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down
 # =============================================================================
 set -u
@@ -66,13 +69,11 @@ ssh_hypervisor() {
 }
 
 # ── Events ───────────────────────────────────────────────────────────────────
-# The second name of the first two events is the one upssched.conf and
-# upsmon.conf still send; they go once those files use the role names.
 case "${1:-}" in
 
-  hypervisor-down|hypervisor-down)
+  hypervisor-down)
     notify "Power cut — shutting the hypervisor down" \
-           "Mains down for >60s. The hypervisor is shutting down now; the server stays up on battery." \
+           "Mains down past the grace period. The hypervisor is shutting down now; the server stays up on battery." \
            "urgent" "electric_plug"
     if [ -z "$KG_UPS_HYPERVISOR" ]; then
       notify "UPS: hypervisor not configured" \
@@ -88,7 +89,7 @@ case "${1:-}" in
     fi
     ;;
 
-  server-down|server-down)
+  server-down)
     notify "Battery low — shutting the server down" \
            "LOWBATT reached. Compose down, then halt. Everything comes back by itself on mains restore." \
            "urgent" "battery"
@@ -105,7 +106,7 @@ case "${1:-}" in
 
   notify-onbatt)
     notify "Power cut — running on battery" \
-           "Mains down. The hypervisor shuts down in ~60s; the server stays up on battery." \
+           "Mains down. The hypervisor shuts down if it lasts past the grace period; the server stays up on battery." \
            "urgent" "electric_plug"
     ;;
 
@@ -113,6 +114,26 @@ case "${1:-}" in
     notify "Mains restored" \
            "Power is back. The hypervisor wakes itself on the next ingest (WoL)." \
            "default" "white_check_mark"
+    ;;
+
+  # A UPS the server cannot read is a UPS that protects nothing, and nothing
+  # else says so: the driver retries forever and upsmon writes to the journal.
+  notify-commbad)
+    notify "UPS link lost — power is not watched" \
+           "The server has not read the UPS for a minute. Until it does again, a power cut goes unnoticed: the hypervisor is not shut down and the server stops when the battery does. Check the USB cable first." \
+           "high" "warning"
+    ;;
+
+  notify-commok)
+    notify "UPS link back" \
+           "The server reads the UPS again: power is watched." \
+           "default" "white_check_mark"
+    ;;
+
+  notify-nocomm)
+    notify "UPS still not readable" \
+           "The server cannot read the UPS, and repeats this until it can. A power cut goes unnoticed in the meantime. Check the USB cable (lsusb), then the driver's journal." \
+           "high" "warning"
     ;;
 
   *)

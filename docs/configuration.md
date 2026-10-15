@@ -47,8 +47,8 @@ being committed.
 in any tracked file. See [testing](testing.md).
 
 Secrets that a service reads from a file rather than the environment stay out
-of `.env` entirely — the UPS handler's ntfy token lives in `/etc/nut/kg-ups.env`
-at mode 0600, owned by root.
+of `.env` entirely — the UPS handler's ntfy token lives in `/etc/nut/kg-ups.env`,
+owned by `root:nut` at mode 0640, because the handler runs as `nut`.
 
 ---
 

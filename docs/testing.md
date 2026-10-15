@@ -17,6 +17,8 @@ rather than after.
 | Python syntax | |
 | Tracked JSON parses | `services_metadata.json` drives the checker; `workflows/` are n8n exports, and broken JSON surfaces at import time, which is when it is needed |
 | Every compose file parses, every include resolves | A wrong include path breaks *every* compose command, not just that stack |
+| Workflows and host scripts reach other machines by role, never by name or private address | A host name or an address written in is silently wrong on the next machine this is cloned to |
+| Every event the UPS runbook configures has a case in `host/kg-ups-handler` | NUT is configured by hand from the runbook; an event renamed on one side only ends in "unknown event" during the outage itself |
 | No private key or JWT in tracked files; `.env` not tracked | The check that matters before publishing |
 | Unit tests | See below |
 
@@ -68,6 +70,10 @@ another machine's newest configuration copy is older than
 `HOST_CONFIG_MAX_AGE_DAYS`. See [backup](backup.md). Comparing that fingerprint on both
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
+
+Where NUT is installed it also reads every UPS the server knows, and fails
+unless the status is on line: a UPS the server cannot read protects nothing,
+and says so nowhere else. See [ups](stacks/ups.md).
 
 It runs every check before reporting, rather than stopping at the first
 failure — when you are comparing before and after an upgrade, the full picture

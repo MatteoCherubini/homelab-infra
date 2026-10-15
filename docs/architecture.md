@@ -112,8 +112,9 @@ Inside, **Nginx Proxy Manager** terminates TLS and routes by hostname; the
 firewall's DNS resolves the same hostnames to the server.
 
 Only the services that need to be reachable from outside are published. Admin
-surfaces are bound to loopback — Syncthing's GUI and API are on
-`127.0.0.1:8384` and are not exposed on the LAN at all.
+surfaces and unauthenticated APIs are bound to loopback — Syncthing's GUI and
+API on `127.0.0.1:8384`, Ollama on `127.0.0.1:11434` — and are not exposed on
+the LAN at all.
 
 ## Storage
 

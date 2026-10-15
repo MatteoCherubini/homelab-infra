@@ -378,7 +378,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "=wakeonlan {{ $env.KG_HYPERVISOR_MAC || $env.HYPERVISOR_MAC }}"
+        "command": "=wakeonlan {{ $env.KG_HYPERVISOR_MAC }}"
       },
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
