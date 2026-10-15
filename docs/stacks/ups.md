@@ -82,7 +82,7 @@ is one edit.
 | USB cable, UPS → server | ✅ | Check it after every move: `lsusb -d 0665:5161` must print a line |
 | Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
 | server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
-| hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
+| hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 — tested 2026-10-15: woken by Wake-on-LAN after the UPS had cut and restored its outlets |
 
 > ⚠️ **Without the switch on the UPS**, the server cannot tell the hypervisor to shut down during an outage.
 
@@ -150,6 +150,7 @@ MINSUPPLIES 1
 POLLFREQ 5
 POLLFREQALERT 5
 NOCOMMWARNTIME 3600
+POWERDOWNFLAG /etc/killpower
 SHUTDOWNCMD "/usr/local/bin/kg-ups-handler server-down"
 NOTIFYCMD /usr/sbin/upssched
 NOTIFYFLAG ONBATT  SYSLOG+WALL+EXEC
@@ -161,6 +162,14 @@ NOTIFYFLAG NOCOMM  SYSLOG+WALL+EXEC
 ```
 
 > `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
+
+> **`POWERDOWNFLAG` has no built-in default, and without it there is no
+> killpower.** upsmon writes that file just before the halt; the late-shutdown
+> hook (`/lib/systemd/system-shutdown/nutshutdown`) tells the UPS to cut its
+> outlets only if the file is there. Leave the line out and the server halts
+> as planned, the UPS keeps its outlets on, and nothing says why. That is how
+> the first killpower test here failed. upsmon removes the file when it starts,
+> so an ordinary reboot afterwards does not cut the power.
 
 ### `/etc/nut/upssched.conf`
 
@@ -365,10 +374,15 @@ sudo upsmon -c fsd
 
 ### 6. Killpower check (LOWBATT)
 
-1. Let it drain to `LOWBATT`, or force it with FSD.
+Needs `POWERDOWNFLAG` in `upsmon.conf`, and the hypervisor already off:
+everything on the outlets loses power for `ups.delay.start` (3 minutes here).
+
+1. Let it drain to `LOWBATT`, or force it with FSD (`sudo upsmon -c fsd`).
 2. Confirm the UPS **cuts its output** (outlets dead).
 3. Restore mains power.
-4. Confirm **server powers itself back on**.
+4. Confirm **server powers itself back on**, and that `/etc/killpower` is gone.
+5. Wake the hypervisor the usual way: Wake-on-LAN has to work after a real
+   loss of power, not only from a clean shutdown.
 
 > ⚠️ **If the UPS does not cut its output**, server stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
 
@@ -399,6 +413,7 @@ Harmless: nothing is shut down.
 | `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
 | The hypervisor does not shut down | Switch not on the UPS, or `KG_UPS_HYPERVISOR` empty | Move the switch onto the UPS; set it in `/etc/nut/kg-ups.env` |
 | server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
+| After `upsmon -c fsd` the server halts and the UPS outlets stay on | No `POWERDOWNFLAG` in `upsmon.conf`: the flag is never written, and the late-shutdown hook skips the UPS without a word | Add `POWERDOWNFLAG /etc/killpower`. `upsmon -K` cannot tell the two apart: it says "Power down flag is not set" with or without the line |
 | Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
 ---
@@ -424,13 +439,17 @@ Verified on 2026-10-15:
       wrote to the journal, and `make healthcheck` still passed. A manual
       `upscmd -l` found it. That is why the link is now watched (the last three
       lines of `upssched.conf`) and checked (`make healthcheck`, "Power")
-
-Not verified yet, and worth doing before relying on them:
-
-- [ ] The link watch: test procedure, section 7
-- [ ] A real grace-period test: hypervisor down cleanly, server still up
-- [ ] Killpower at LOWBATT: the UPS cuts its output and the server powers back
-      on by itself
+- [x] The link watch (test procedure, section 7): unplugged for over a minute,
+      "UPS link lost", `ups` red in the health check, then "UPS link back"
+- [x] The grace period, live (section 5): on battery at 15:50:14 UTC, the
+      hypervisor told to shut down at 15:53:14 — 180 seconds — and off within
+      two minutes; the server stayed up. Back on mains after 4 min 20 s, the
+      charge read about 74 %, from 100: the hypervisor, its guest and the other
+      loads on the outlets draw it fast, so the grace period is a real cost
+- [x] Killpower (section 6), at the second attempt: the first failed for want
+      of `POWERDOWNFLAG`. With it, the outlets went dark 30 seconds after the
+      halt, came back three minutes later, and the server booted on its own
+      with the flag file gone. The hypervisor then woke by Wake-on-LAN
 
 The dry run deserves a periodic check, at the quarterly session: an SSH forced
 command that stopped matching fails at precisely the moment it is needed and
