@@ -67,11 +67,9 @@ ssh_hypervisor() {
 }
 
 # ── Events ───────────────────────────────────────────────────────────────────
-# The second name of the first two events is the one upssched.conf and
-# upsmon.conf still send; they go once those files use the role names.
 case "${1:-}" in
 
-  hypervisor-down|hypervisor-down)
+  hypervisor-down)
     notify "Power cut — shutting the hypervisor down" \
            "Mains down past the grace period. The hypervisor is shutting down now; the server stays up on battery." \
            "urgent" "electric_plug"
@@ -89,7 +87,7 @@ case "${1:-}" in
     fi
     ;;
 
-  server-down|server-down)
+  server-down)
     notify "Battery low — shutting the server down" \
            "LOWBATT reached. Compose down, then halt. Everything comes back by itself on mains restore." \
            "urgent" "battery"
