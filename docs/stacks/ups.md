@@ -16,7 +16,7 @@ bring them back up at boot.
 |-------|-------|
 | The event handler NUT invokes, installed to `/usr/local/bin` | `host/kg-ups-handler` |
 | NUT configuration, systemd units, the SSH forced command | On the host — created from this runbook, not tracked here |
-| The ntfy token the handler uses | `/etc/nut/kg-ups.env`, mode 0600, owned by root |
+| Where the handler finds the hypervisor, and the ntfy token | `/etc/nut/kg-ups.env`, `root:nut`, mode 0640 |
 
 Only the handler is version-controlled. The rest is host configuration that
 this document describes well enough to rebuild.
@@ -214,8 +214,9 @@ command="/usr/local/sbin/n8n-qm-wrap",no-agent-forwarding,no-X11-forwarding,no-p
 
 ### On the server: where the handler finds the hypervisor
 
-`/etc/nut/kg-ups.env`, mode 0600, owned by root — never in the handler, never
-in `.env`:
+`/etc/nut/kg-ups.env`, owned by `root:nut` with mode 0640 — never in the
+handler, never in `.env`. `upssched` runs the handler as `nut`, so a file only
+root can read leaves it without a target and without the token:
 
 ```bash
 KG_UPS_HYPERVISOR=root@<hypervisor-address>

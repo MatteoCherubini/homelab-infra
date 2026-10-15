@@ -13,7 +13,8 @@
 # Why not decide on battery.runtime: this model's runtimecal is calibrated at 4%/8% load, so
 # any runtime estimate under real load is fiction. Time-since-ONBATT is honest; runtime is not.
 #
-# Configuration lives in /etc/nut/kg-ups.env (chmod 0600, owned by root), never in this file:
+# Configuration lives in /etc/nut/kg-ups.env (root:nut, mode 0640: upssched runs this as nut),
+# never in this file:
 #   KG_UPS_HYPERVISOR=<ssh destination>   user@address, or an alias in nut's ~/.ssh/config
 #   NTFY_TOKEN=tk_...
 # On the hypervisor, nut's key carries a forced command (n8n-qm-wrap) that accepts
