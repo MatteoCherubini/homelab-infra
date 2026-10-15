@@ -167,6 +167,40 @@ else
   bad "a machine reached by name or address"; printf '%s\n' "$out" | sed 's/^/      /'
 fi
 
+# ── 6c. Every UPS event has a handler ────────────────────────────────────
+# NUT is configured by hand from docs/stacks/ups.md, and the handler is
+# installed from host/. An event the configuration sends and the handler does
+# not know ends in "unknown event" during the outage itself, the one moment
+# nobody is reading logs. Renaming an event on one side only does exactly that.
+title "UPS: the handler answers every event the runbook configures"
+if out=$(python3 - <<'PY' 2>&1
+import re, sys
+doc = open('docs/stacks/ups.md', encoding='utf-8').read()
+handler = open('host/kg-ups-handler', encoding='utf-8').read()
+sent = set()
+for verb, a, b in re.findall(r'^AT\s+\S+\s+\S+\s+(START-TIMER|EXECUTE|CANCEL-TIMER)\s+(\S+)(?:[ \t]+(\S+))?', doc, re.M):
+    if verb == 'CANCEL-TIMER':
+        if b:
+            sent.add(b)
+    else:
+        sent.add(a)
+sent.update(re.findall(r'/kg-ups-handler\s+([a-z][a-z-]*)', doc))
+body = handler[handler.index('case "${1:-}" in'):]
+handled = {e for alt in re.findall(r'^\s+([a-z][a-z|-]*)\)', body, re.M) for e in alt.split('|')}
+if len(sent) < 4:
+    print(f"only {sorted(sent)} found in the runbook: has its format changed?")
+    sys.exit(1)
+missing = sorted(sent - handled)
+for e in missing:
+    print(f"'{e}' is sent by the configuration in docs/stacks/ups.md, and host/kg-ups-handler does not handle it")
+sys.exit(1 if missing else 0)
+PY
+); then
+  ok "every event in docs/stacks/ups.md has a case in host/kg-ups-handler"
+else
+  bad "an event without a handler"; printf '%s\n' "$out" | sed 's/^/      /'
+fi
+
 # ── 7. No committed secrets ──────────────────────────────────────────────
 # The check that matters before making the repository public. It looks only at
 # TRACKED files: ignored ones (.env and friends) can and should hold real

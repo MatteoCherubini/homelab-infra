@@ -22,7 +22,9 @@
 #
 # Install ON THE SERVER: install -m 0755 host/kg-ups-handler /usr/local/bin/kg-ups-handler
 # Full runbook: docs/stacks/ups.md
-# Called as:  kg-ups-handler <event>     (hypervisor-down | server-down | notify-onbatt | notify-online)
+# Called as:  kg-ups-handler <event>
+#   hypervisor-down | server-down | notify-onbatt | notify-online
+#   notify-commbad | notify-commok | notify-nocomm   (the server cannot read the UPS)
 # Test (no shutdown):  KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down
 # =============================================================================
 set -u
@@ -112,6 +114,26 @@ case "${1:-}" in
     notify "Mains restored" \
            "Power is back. The hypervisor wakes itself on the next ingest (WoL)." \
            "default" "white_check_mark"
+    ;;
+
+  # A UPS the server cannot read is a UPS that protects nothing, and nothing
+  # else says so: the driver retries forever and upsmon writes to the journal.
+  notify-commbad)
+    notify "UPS link lost — power is not watched" \
+           "The server has not read the UPS for a minute. Until it does again, a power cut goes unnoticed: the hypervisor is not shut down and the server stops when the battery does. Check the USB cable first." \
+           "high" "warning"
+    ;;
+
+  notify-commok)
+    notify "UPS link back" \
+           "The server reads the UPS again: power is watched." \
+           "default" "white_check_mark"
+    ;;
+
+  notify-nocomm)
+    notify "UPS still not readable" \
+           "The server cannot read the UPS, and repeats this until it can. A power cut goes unnoticed in the meantime. Check the USB cable (lsusb), then the driver's journal." \
+           "high" "warning"
     ;;
 
   *)

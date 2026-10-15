@@ -79,6 +79,7 @@ is one edit.
 | server (main server) | ✅ | On the Schuko outlet |
 | hypervisor (Proxmox/GPU) | ✅ | On the Schuko outlet |
 | Network switch | ✅ | **Must** be on the UPS |
+| USB cable, UPS → server | ✅ | Check it after every move: `lsusb -d 0665:5161` must print a line |
 | Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
 | server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
 | hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 |
@@ -148,11 +149,15 @@ MONITOR server-ups@localhost 1 upsmon <STRONG_PASSWORD> master
 MINSUPPLIES 1
 POLLFREQ 5
 POLLFREQALERT 5
+NOCOMMWARNTIME 3600
 SHUTDOWNCMD "/usr/local/bin/kg-ups-handler server-down"
 NOTIFYCMD /usr/sbin/upssched
 NOTIFYFLAG ONBATT  SYSLOG+WALL+EXEC
 NOTIFYFLAG ONLINE  SYSLOG+WALL+EXEC
 NOTIFYFLAG LOWBATT SYSLOG+WALL+EXEC
+NOTIFYFLAG COMMBAD SYSLOG+WALL+EXEC
+NOTIFYFLAG COMMOK  SYSLOG+WALL+EXEC
+NOTIFYFLAG NOCOMM  SYSLOG+WALL+EXEC
 ```
 
 > `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
@@ -168,7 +173,23 @@ AT ONBATT  * START-TIMER  hypervisor-down 180
 AT ONBATT  * EXECUTE      notify-onbatt
 AT ONLINE  * CANCEL-TIMER hypervisor-down
 AT ONLINE  * EXECUTE      notify-online
+AT COMMBAD * START-TIMER  notify-commbad 60
+AT COMMOK  * CANCEL-TIMER notify-commbad notify-commok
+AT NOCOMM  * EXECUTE      notify-nocomm
 ```
+
+The last three lines watch the link to the UPS, which is the one failure
+everything else here cannot report: with no data from the UPS there is no
+`ONBATT`, so no shutdown and no notice.
+
+- **`COMMBAD`** is a link that was up and went. A loss shorter than a minute
+  says nothing; a longer one sends one notice.
+- **`COMMOK`** cancels that notice if it has not gone yet, and otherwise says
+  the link is back: `CANCEL-TIMER <name> <cmd>` runs `<cmd>` only when the
+  timer has already fired.
+- **`NOCOMM`** repeats every `NOCOMMWARNTIME` seconds, an hour here, while the
+  UPS stays unreadable. It is also the only notice when the link never came up
+  at boot, since there was no link to lose.
 
 ### Startup
 
@@ -249,6 +270,8 @@ Handles:
 - `hypervisor-down` → SSH to the hypervisor for a graceful shutdown
 - `server-down` → `compose down` plus halt (called by upsmon at LOWBATT)
 - `notify-onbatt` / `notify-online` → ntfy notifications
+- `notify-commbad` / `notify-commok` / `notify-nocomm` → ntfy notifications
+  when the server cannot read the UPS, and when it can again
 
 > **Note:** the SSH command sent to the hypervisor must be **the bare name** (`hypervisor-emergency-shutdown`), not the full path — the `n8n-qm-wrap` wrapper matches on names.
 
@@ -349,6 +372,18 @@ sudo upsmon -c fsd
 
 > ⚠️ **If the UPS does not cut its output**, server stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
 
+### 7. Losing the link to the UPS
+
+Harmless: nothing is shut down.
+
+1. Unplug the USB cable at the server and wait more than a minute.
+2. Expected: the notice "UPS link lost", and `upsc server-ups ups.status`
+   answers `Driver not connected`.
+3. Plug it back in. Within about 15 seconds `ups.status` is `OL` again, and the
+   notice "UPS link back" arrives.
+
+`make healthcheck` reports the same state on its own line under "Power".
+
 ---
 
 ## 🚨 Troubleshooting
@@ -356,6 +391,7 @@ sudo upsmon -c fsd
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Cannot load USB library` | `libusb-1.0-0-dev` missing | `sudo apt install libusb-1.0-0-dev` |
+| `Driver not connected`; the driver's journal says `insufficient permissions on everything` and restarts every 15 s | The UPS is not on the USB bus at all. Finding nothing, the driver tries every other USB device and is refused by each: it reads like a permissions problem and is not one | `lsusb -d 0665:5161`; plug the cable back in. The driver picks it up by itself within 15 s |
 | `Duplicate driver instance` | Stale PID file | `sudo rm -f /run/nut/*.pid` |
 | `upsd disabled` | `MODE` not set in `nut.conf` | `echo 'MODE=netserver' \| sudo tee /etc/nut/nut.conf` |
 | `unauthorized command` on the hypervisor | The wrapper does not accept `hypervisor-emergency-shutdown` | Install the orchestrator's `deploy/hypervisor/n8n-qm-wrap` at `/usr/local/sbin/n8n-qm-wrap` |
@@ -378,18 +414,28 @@ Verified on the server on 2026-09-21:
 - [x] `homelab-compose.service` enabled, so the stacks come back at boot
 - [x] The workstation is reachable from the server
 
-Not verified from here, and worth re-checking before relying on it:
+Verified on 2026-10-15:
 
-- [ ] `KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down` reaches the
-      hypervisor's forced command and prints its dry run — the forced command is the part that silently rots, because
-      nothing exercises it until a real outage does
+- [x] `KG_UPS_DRYRUN=1 kg-ups-handler hypervisor-down`, run as `nut`, reaches
+      the hypervisor's forced command with the role names and prints its dry run
+- [x] The UPS back on the USB bus. It had been left unplugged after a move, and
+      for days nothing said so: the driver restarted every 15 seconds, upsmon
+      wrote to the journal, and `make healthcheck` still passed. A manual
+      `upscmd -l` found it. That is why the link is now watched (the last three
+      lines of `upssched.conf`) and checked (`make healthcheck`, "Power")
+
+Not verified yet, and worth doing before relying on them:
+
+- [ ] The link watch: test procedure, section 7
 - [ ] A real grace-period test: hypervisor down cleanly, server still up
 - [ ] Killpower at LOWBATT: the UPS cuts its output and the server powers back
       on by itself
 
-The second one deserves a periodic check. Everything else in this design fails
-loudly; an SSH forced command that stopped matching fails at precisely the
-moment it is needed and never before.
+The dry run deserves a periodic check, at the quarterly session: an SSH forced
+command that stopped matching fails at precisely the moment it is needed and
+never before. A missing link to the UPS used to fail the same way; now it says
+so, within a minute when the link drops and within the hour when it never came
+up.
 
 ## 📝 Operational notes
 
