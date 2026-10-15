@@ -157,11 +157,6 @@ NOTIFYFLAG LOWBATT SYSLOG+WALL+EXEC
 
 > `SHUTDOWNCMD` is run by **upsmon**, which re-elevates to root — not by upssched.
 
-> The handler also accepts the event names this setup used before roles,
-> `server-down` and `hypervisor-down`, so `upsmon.conf` and `upssched.conf` can be
-> switched to the names above at any time, not in the same minute as the
-> handler.
-
 ### `/etc/nut/upssched.conf`
 
 ```ini
