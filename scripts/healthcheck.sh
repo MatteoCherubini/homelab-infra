@@ -144,6 +144,26 @@ if want n8n; then
   fi
 fi
 
+# A UPS the server cannot read protects nothing, and fails in silence: the
+# driver retries forever and upsmon writes to the journal. After a move the
+# cable stayed unplugged for days while every check here passed. Only where NUT
+# is installed — a setup without a UPS has no line here. docs/stacks/ups.md
+if want ups && command -v upsc >/dev/null 2>&1; then
+  title "Power"
+  if upsl=$(upsc -l 2>/dev/null) && [ -n "$upsl" ]; then
+    for u in $upsl; do
+      st=$(upsc "$u" ups.status 2>&1 | grep -v '^Init SSL' | head -1)
+      case "$st" in
+        *RB*|*LB*|*OVER*) bad "ups: $u" "$st" ;;
+        OL*)              ok  "ups: $u" "$st" ;;
+        *)                bad "ups: $u" "${st:-no answer}" ;;
+      esac
+    done
+  else
+    bad "ups server" "upsc -l lists nothing: is nut-server running?"
+  fi
+fi
+
 # The nightly off-site backup reports through ntfy; this is the check that
 # still notices when the notification itself never left. The stamp is written
 # by scripts/backup.sh only after a fully successful run. docs/backup.md
