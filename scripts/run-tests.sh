@@ -172,7 +172,7 @@ fi
 # installed from host/. An event the configuration sends and the handler does
 # not know ends in "unknown event" during the outage itself, the one moment
 # nobody is reading logs. Renaming an event on one side only does exactly that.
-title "UPS: the handler answers every event the runbook configures"
+title "UPS: the runbook and the handler agree"
 if out=$(python3 - <<'PY' 2>&1
 import re, sys
 doc = open('docs/stacks/ups.md', encoding='utf-8').read()
@@ -193,12 +193,17 @@ if len(sent) < 4:
 missing = sorted(sent - handled)
 for e in missing:
     print(f"'{e}' is sent by the configuration in docs/stacks/ups.md, and host/kg-ups-handler does not handle it")
-sys.exit(1 if missing else 0)
+# No built-in default: without this line the halt happens and the UPS is never
+# told to cut its outlets, which nothing reports.
+flag = re.search(r'^POWERDOWNFLAG\s+\S+', doc, re.M)
+if not flag:
+    print("the upsmon.conf in docs/stacks/ups.md has no POWERDOWNFLAG: killpower would never happen")
+sys.exit(1 if missing or not flag else 0)
 PY
 ); then
-  ok "every event in docs/stacks/ups.md has a case in host/kg-ups-handler"
+  ok "every event in docs/stacks/ups.md has a case in host/kg-ups-handler, and killpower has its flag"
 else
-  bad "an event without a handler"; printf '%s\n' "$out" | sed 's/^/      /'
+  bad "the UPS runbook and the handler disagree"; printf '%s\n' "$out" | sed 's/^/      /'
 fi
 
 # ── 7. No committed secrets ──────────────────────────────────────────────
