@@ -354,9 +354,9 @@ like `.env`: owner-only on the server, encrypted off-site.
   or afterwards from *System → Configuration → Backups*. The console's
   *Restore a backup* only offers the revisions kept on the same machine.
   Different hardware may need its interfaces reassigned at the console.
-  Rehearse it once in a VM whose network cards are disconnected
-  (`link_down=1`): a second firewall answering for the gateway's address and
-  serving DHCP would break the whole home network.
+  Rehearse it in a VM whose network cards are disconnected (`link_down=1`): a
+  second firewall answering for the gateway's address and serving DHCP would
+  break the whole home network. How, below.
 - **A hypervisor.** Install Proxmox VE under the same node name, so that the
   copied paths match. Put back the network, boot and module files, then
   reboot. Then copy the guests' `.conf` files back under
@@ -371,6 +371,56 @@ like `.env`: owner-only on the server, encrypted off-site.
   means the orchestrator's `deploy/ai-node/install.sh` and
   `setup-dev-env.sh`, then the environment file. Check that file before using
   it: `KG_CONFIG=<file> install.sh --verify`.
+
+### Rehearsing the firewall restore
+
+Done on 2026-10-16 on the hypervisor, with the same OPNsense version as the
+firewall: the copied `config.xml` imported, the interfaces were reassigned to
+the VM's cards, and the ruleset it generated matched the live one but for the
+lines that depend on a WAN lease. What it took:
+
+1. **The stick.** A small disk image with one FAT partition holding
+   `conf/config.xml`, the layout the importer looks for. The file streams from
+   the server's copy to the hypervisor (`tar -xzO -f <copy> conf/config.xml`
+   piped from one `ssh` to the other), so it never lands on the laptop:
+   ```bash
+   truncate -s 64M stick.img && echo 'type=6' | sfdisk -q stick.img
+   mkfs.vfat -F 16 -h 2048 --offset 2048 stick.img 64512
+   mount -o loop,offset=1048576 stick.img /mnt/stick
+   mkdir /mnt/stick/conf && cp config.xml /mnt/stick/conf/ && umount /mnt/stick
+   ```
+   Writing the filesystem at the partition's offset avoids waiting for a loop
+   partition device, which may not exist yet when `mkfs` runs.
+2. **The VM.** Both network cards with `link_down=1`, the installer ISO as the
+   boot device, no system disk: the live mode is enough. Proxmox takes no disk
+   from an arbitrary path, so the stick goes into a storage first
+   (`qm disk import <vmid> stick.img <storage>`, then attach the volume).
+3. **The import.** The live boot asks twice, a few seconds each. *Press any
+   key to start the configuration importer* comes **first**: take that one and
+   give the stick's device. *…start the manual interface assignment* comes
+   second, and answering it instead leads to an assignment of the factory
+   configuration. Missed it: reset the VM. Interrupting the boot with Ctrl+C
+   and resuming it from the emergency shell hung on "Mounting filesystems".
+4. **Different hardware.** The live boot did not stop on the missing cards.
+   The console's option 1 reassigns them. For VLANs, answer yes, let it clear
+   the old ones, and recreate each on the new parent with the same tag; then
+   give WAN, LAN and the optional interfaces in their old order, so each OPTn
+   keeps its addresses and rules.
+5. **The check**, at the console's shell. The Proxmox console maps the keyboard
+   as US English, so a pipe may be hard to type, and none is needed:
+   ```
+   pfctl -s info
+   wc -l /tmp/rules.debug
+   grep -c pass /tmp/rules.debug
+   pfctl -nf /tmp/rules.debug
+   ```
+   `pfctl -nf` prints nothing when the ruleset loads. Compare the counts with
+   the live firewall's, after checking that the copy is still the live
+   configuration — the same SHA-256 for both `config.xml` — so a difference
+   means hardware, not a change made since the copy.
+6. **Afterwards**, destroy the VM with its disks and shred the stick and the
+   copied file. The ISO is worth keeping on the hypervisor: in an emergency it
+   can run the firewall as a VM until replacement hardware arrives.
 
 ## Restore
 
