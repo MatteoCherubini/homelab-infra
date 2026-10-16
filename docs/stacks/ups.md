@@ -34,13 +34,13 @@ this document describes well enough to rebuild.
 
 ```
 ┌─────────────────┐      USB       ┌─────────────────┐
-│  Green Cell     │◄───────────────│     server       │
+│  Green Cell     │◄───────────────│     server      │
 │  PowerProof 2k  │                │  (NUT primary)  │
 │  2000VA         │                │                 │
 └────────┬────────┘                │  ┌───────────┐  │
          │                         │  │ nut-server│  │
     ┌────┴────┐                    │  │ upsmon    │  │
-    │ Schuko  │◄── server (~80W)    │  │ upssched  │  │
+    │ Schuko  │◄── server (~80W)   │  │ upssched  │  │
     │   +     │◄── hypervisor      │  └───────────┘  │
     │         │    (~400W)         │                 │
     │   IEC   │◄── switch          │                 │
@@ -76,19 +76,19 @@ is one edit.
 | Component | Status | Note |
 |-----------|--------|------|
 | Green Cell PowerProof 2000VA UPS | ✅ | `nutdrv_qx` driver, `q1` protocol |
-| server (main server) | ✅ | On the Schuko outlet |
+| The server | ✅ | On the Schuko outlet |
 | hypervisor (Proxmox/GPU) | ✅ | On the Schuko outlet |
 | Network switch | ✅ | **Must** be on the UPS |
 | USB cable, UPS → server | ✅ | Check it after every move: `lsusb -d 0665:5161` must print a line |
 | Modem/ONT | ⚠️ opt. | Needed for ntfy notifications during an outage |
-| server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
+| Server BIOS: "Power On after AC loss" | ✅ | ON — tested 2026-10-13: halted, cord pulled 30 s, back on by itself |
 | hypervisor BIOS: "Stay Off after AC loss" | ✅ | ON, plus WoL from S5 — tested 2026-10-15: woken by Wake-on-LAN after the UPS had cut and restored its outlets |
 
 > ⚠️ **Without the switch on the UPS**, the server cannot tell the hypervisor to shut down during an outage.
 
 ---
 
-## ⚙️ NUT on server (primary)
+## ⚙️ NUT on the server (primary)
 
 ### Dependencies
 
@@ -102,7 +102,7 @@ sudo apt install nut libusb-1.0-0-dev
 maxretry = 1
 pollinterval = 2
 
-[server-ups]
+[ups]
     driver = nutdrv_qx
     protocol = q1
     port = auto
@@ -119,6 +119,8 @@ pollinterval = 2
     default.input.voltage.nominal = 230.0
     default.output.voltage.nominal = 230.0
 ```
+
+> `ups` is the name this file gives the UPS; every command below uses it.
 
 > `runtimecal` is calibrated at 4–8% load (~50–100W). With the hypervisor running (~33% = ~400W) the `battery.runtime` estimate is **optimistic and unreliable** — the shutdown logic keys off time since `ONBATT`, not off runtime.
 
@@ -145,7 +147,7 @@ LISTEN 127.0.0.1 3493
 ### `/etc/nut/upsmon.conf`
 
 ```ini
-MONITOR server-ups@localhost 1 upsmon <STRONG_PASSWORD> master
+MONITOR ups@localhost 1 upsmon <STRONG_PASSWORD> master
 MINSUPPLIES 1
 POLLFREQ 5
 POLLFREQALERT 5
@@ -204,7 +206,7 @@ everything else here cannot report: with no data from the UPS there is no
 
 ```bash
 sudo systemctl restart nut-server nut-monitor
-sudo upsc server-ups@localhost
+sudo upsc ups@localhost
 ```
 
 ---
@@ -329,7 +331,7 @@ sudo systemctl enable --now homelab-compose
 ### 1. NUT basics
 
 ```bash
-sudo upsc server-ups@localhost
+sudo upsc ups@localhost
 ```
 
 Expected: `ups.status: OL`, `battery.charge: 100`, `input.voltage: ~229V`.
@@ -369,7 +371,7 @@ sudo upsmon -c fsd
 1. Pull the UPS plug from the wall, with the hypervisor running.
 2. Wait past the grace period (180 seconds here).
 3. **The hypervisor** must shut down cleanly (guests → host halt).
-4. **server** must stay up.
+4. **The server** must stay up.
 5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
 
 ### 6. Killpower check (LOWBATT)
@@ -380,18 +382,18 @@ everything on the outlets loses power for `ups.delay.start` (3 minutes here).
 1. Let it drain to `LOWBATT`, or force it with FSD (`sudo upsmon -c fsd`).
 2. Confirm the UPS **cuts its output** (outlets dead).
 3. Restore mains power.
-4. Confirm **server powers itself back on**, and that `/etc/killpower` is gone.
+4. Confirm **the server powers itself back on**, and that `/etc/killpower` is gone.
 5. Wake the hypervisor the usual way: Wake-on-LAN has to work after a real
    loss of power, not only from a clean shutdown.
 
-> ⚠️ **If the UPS does not cut its output**, server stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
+> ⚠️ **If the UPS does not cut its output**, the server stays `halted` and will not restart on its own. That needs manual intervention, or a smart plug upstream.
 
 ### 7. Losing the link to the UPS
 
 Harmless: nothing is shut down.
 
 1. Unplug the USB cable at the server and wait more than a minute.
-2. Expected: the notice "UPS link lost", and `upsc server-ups ups.status`
+2. Expected: the notice "UPS link lost", and `upsc ups ups.status`
    answers with an error — `Data stale` while the driver is still waiting for
    the device, `Driver not connected` once it has given up.
 3. Plug it back in. Within about 15 seconds `ups.status` is `OL` again, and the
@@ -412,7 +414,7 @@ Harmless: nothing is shut down.
 | `unauthorized command` on the hypervisor | The wrapper does not accept `hypervisor-emergency-shutdown` | Install the orchestrator's `deploy/hypervisor/n8n-qm-wrap` at `/usr/local/sbin/n8n-qm-wrap` |
 | `Connection failure` | `upsd` not listening | `sudo systemctl start nut-server` |
 | The hypervisor does not shut down | Switch not on the UPS, or `KG_UPS_HYPERVISOR` empty | Move the switch onto the UPS; set it in `/etc/nut/kg-ups.env` |
-| server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
+| The server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
 | After `upsmon -c fsd` the server halts and the UPS outlets stay on | No `POWERDOWNFLAG` in `upsmon.conf`: the flag is never written, and the late-shutdown hook skips the UPS without a word | Add `POWERDOWNFLAG /etc/killpower`. `upsmon -K` cannot tell the two apart: it says "Power down flag is not set" with or without the line |
 | Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
 
@@ -422,7 +424,7 @@ Harmless: nothing is shut down.
 
 Verified on the server on 2026-09-21:
 
-- [x] `upsc server-ups@localhost` returns sane data — `ups.status: OL`,
+- [x] `upsc ups@localhost` returns sane data — `ups.status: OL`,
       battery 100%, input 225.2V
 - [x] `nut-server` and `nut-monitor` enabled and active
 - [x] `kg-ups-handler` installed at `/usr/local/bin`, owned by root

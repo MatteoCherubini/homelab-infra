@@ -20,6 +20,7 @@ rather than after.
 | Workflows and host scripts reach other machines by role, never by name or private address | A host name or an address written in is silently wrong on the next machine this is cloned to |
 | Every event the UPS runbook configures has a case in `host/kg-ups-handler`, and its `upsmon.conf` sets `POWERDOWNFLAG` | NUT is configured by hand from the runbook; an event renamed on one side only ends in "unknown event" during the outage itself, and a missing flag means no killpower, silently |
 | No private key or JWT in tracked files; `.env` not tracked | The check that matters before publishing |
+| No name of this installation in tracked files: the machines, domains and addresses listed in `.private-names`, which git ignores | Roles and placeholders only, because the repository is meant to be published. Without the file the check is a skip, not a pass |
 | Unit tests | See below |
 
 **Checks that cannot run produce an explicit skip, not a pass.** A test that

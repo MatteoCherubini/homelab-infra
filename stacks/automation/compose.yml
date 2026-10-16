@@ -185,7 +185,7 @@ services:
   syncthing:
     image: ${SYNCTHING_IMAGE}:${SYNCTHING_VERSION}
     restart: unless-stopped
-    hostname: server-syncthing
+    hostname: syncthing
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
@@ -200,7 +200,7 @@ services:
       # the official guide (README-Docker.md). config.xml will reside under this directory.
       - ${DATA_ROOT}/syncthing:/var/syncthing
       # genome working tree (checkout + private staging area), IDENTICAL host↔container path
-      # so the SSH-based commit job on server and Syncthing see the same path
+      # so the SSH-based commit job on the server and Syncthing see the same path
       - ${GENOME_VAULTS_ROOT:-/srv/genome-vaults}:${GENOME_VAULTS_ROOT:-/srv/genome-vaults}
     ports:
       # GUI/API: host loopback only (admin). n8n uses the internal Docker network.

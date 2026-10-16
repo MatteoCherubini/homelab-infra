@@ -9,6 +9,10 @@ media/
 .env*
 !.env.example
 
+# The real names of this installation, read by `make test` to keep them out
+# of every tracked file. Listing them here would publish them.
+.private-names
+
 # Local stacks: services that run on this machine only (experiments, separate
 # projects) are declared here rather than in a dedicated branch.
 # See docker-compose.override.yml.example.
