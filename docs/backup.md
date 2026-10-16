@@ -193,7 +193,7 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
 3. **The archive's folder**, owned by whoever files the documents:
 
    ```bash
-   docker run --rm --mount type=bind,src=/mnt/raid/homelab-media,dst=/m alpine:3.24 \
+   docker run --rm --mount type=bind,src=<MEDIA_ROOT>,dst=/m alpine:3.24 \
      sh -c "mkdir -p /m/archive && chown $(id -u):$(id -g) /m/archive"   # src: your MEDIA_ROOT
    ```
 
@@ -246,7 +246,7 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
 
 ## Every night
 
-The workflow runs at 02:30: `ssh n8n-runner@server 'cd /opt/homelab-infra &&
+The workflow runs at 02:30: `ssh n8n-runner@<server> 'cd /opt/homelab-infra &&
 make backup'`, the same path the release checker uses. A successful run is
 announced at minimum priority, a failed or unreadable one as urgent. A night
 that never ran at all is caught by `make healthcheck`, which reads the stamp
@@ -255,7 +255,7 @@ the script writes after a fully successful run.
 The JSON report on stdout is the contract with the workflow:
 
 ```json
-{"run_at": "…", "status": "ok|error", "host": "server",
+{"run_at": "…", "status": "ok|error", "host": "<server>",
  "sets": [{"name": "work", "status": "ok", "snapshot": "…", "data_added": 0, "duration_s": 0}],
  "dumps": ["n8n-db.dump", "vaultwarden.sqlite3"], "errors": []}
 ```
