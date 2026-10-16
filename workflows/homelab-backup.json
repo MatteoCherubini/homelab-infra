@@ -45,7 +45,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// The script prints one JSON document on stdout, whatever the outcome.\n// Anything else (SSH down, script killed, make missing) becomes an error too:\n// a backup that cannot report must never look like a quiet success.\nconst item = $input.first().json;\nlet data;\ntry {\n  data = JSON.parse(item.stdout);\n} catch (e) {\n  data = {\n    status: 'error',\n    run_at: new Date().toISOString(),\n    sets: [], dumps: [],\n    errors: [item.error?.message || item.error || item.stderr?.slice(-500) || `unparseable output: ${e.message}`],\n  };\n}\nreturn [{ json: data }];"
+        "jsCode": "// The script prints one JSON document on stdout, whatever the outcome.\n// Anything else (SSH down, script killed, make missing) becomes an error too:\n// a backup that cannot report must never look like a quiet success.\nconst item = $input.first().json;\nlet data;\ntry {\n  data = JSON.parse(item.stdout);\n} catch (e) {\n  data = {\n    status: 'error',\n    run_at: new Date().toISOString(),\n    sets: [], dumps: [],\n    errors: [item.error?.message || item.error || item.stderr?.slice(-500) || `unparseable output: ${e.message}`],\n  };\n}\n// Second time through this node means the second attempt.\ndata.attempt = $runIndex + 1;\nreturn [{ json: data }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -58,12 +58,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $input.first().json;\nconst mb = b => `${((b || 0) / 1048576).toFixed(1)} MB`;\nconst sets = (d.sets || []).map(s => s.status === 'ok'\n  ? `${s.name}: snapshot ${s.snapshot}, +${mb(s.data_added)}, ${s.duration_s}s`\n  : `${s.name}: FAILED (restic exit ${s.restic_exit})`).join('\\n');\n\nif (d.status === 'ok') {\n  return [{ json: {\n    title: 'Homelab - Backup OK',\n    priority: 'min',\n    tags: 'floppy_disk',\n    body: `${sets}\\nDumps: ${(d.dumps || []).join(', ')}`,\n  } }];\n}\nreturn [{ json: {\n  title: 'Homelab - Backup FAILED',\n  priority: 'urgent',\n  tags: 'rotating_light',\n  body: [(d.errors || []).map(e => '• ' + e).join('\\n'), sets,\n         'Run `make backup` on the server to see the details. docs/backup.md']\n        .filter(Boolean).join('\\n\\n'),\n} }];"
+        "jsCode": "const d = $input.first().json;\n// After a failed first attempt the flow waits and runs the backup once more;\n// this node sees only the last report, so the first one is read back.\nlet first = [];\nif (d.attempt > 1) {\n  try { first = $('Parse backup report').first(0, 0).json.errors || []; }\n  catch (e) { first = ['(the first report could not be read back)']; }\n}\nconst firstText = first.length ? 'First attempt failed:\\n' + first.map(e => '• ' + e).join('\\n') : '';\nconst mb = b => `${((b || 0) / 1048576).toFixed(1)} MB`;\nconst sets = (d.sets || []).map(s => s.status === 'ok'\n  ? `${s.name}: snapshot ${s.snapshot}, +${mb(s.data_added)}, ${s.duration_s}s`\n  : `${s.name}: FAILED (restic exit ${s.restic_exit})`).join('\\n');\n\nif (d.status === 'ok') {\n  return [{ json: {\n    // A night that needed the second attempt is worth seeing, not alarming.\n    title: d.attempt > 1 ? 'Homelab - Backup OK (second attempt)' : 'Homelab - Backup OK',\n    priority: d.attempt > 1 ? 'default' : 'min',\n    tags: 'floppy_disk',\n    body: [`${sets}\\nDumps: ${(d.dumps || []).join(', ')}`, firstText].filter(Boolean).join('\\n\\n'),\n  } }];\n}\nreturn [{ json: {\n  title: d.attempt > 1 ? 'Homelab - Backup FAILED twice' : 'Homelab - Backup FAILED',\n  priority: 'urgent',\n  tags: 'rotating_light',\n  body: [(d.errors || []).map(e => '• ' + e).join('\\n'), sets, firstText,\n         'Run `make backup` on the server to see the details. docs/backup.md']\n        .filter(Boolean).join('\\n\\n'),\n} }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        660,
+        880,
         0
       ],
       "id": "f5ece0f8-2ebd-4c7e-b216-374e0b23035e",
@@ -101,7 +101,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        880,
+        1100,
         0
       ],
       "id": "dd3b9e58-9d2d-4047-aba4-70713a9eb850",
@@ -116,6 +116,55 @@
           "name": "Bearer Auth account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cfd1e41e-f640-4cdc-818a-e434929c7f6c",
+              "leftValue": "={{ $json.status !== 'ok' && $json.attempt === 1 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        0
+      ],
+      "id": "d45ff756-520d-4dee-93bf-e75bfd3bf33b",
+      "name": "First attempt failed?"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "hours"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        200
+      ],
+      "id": "d7b1a973-5047-4582-9926-c1a12f7d3765",
+      "name": "Wait 2 hours, then retry",
+      "webhookId": "91d53d96-b9ba-47ab-a440-798859ff900b"
     }
   ],
   "pinData": {},
@@ -146,7 +195,7 @@
       "main": [
         [
           {
-            "node": "Build notification",
+            "node": "First attempt failed?",
             "type": "main",
             "index": 0
           }
@@ -158,6 +207,35 @@
         [
           {
             "node": "ntfy: send notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First attempt failed?": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 hours, then retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 hours, then retry": {
+      "main": [
+        [
+          {
+            "node": "SSH: make backup",
             "type": "main",
             "index": 0
           }

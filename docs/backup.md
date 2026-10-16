@@ -248,9 +248,18 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
 
 The workflow runs at 02:30: `ssh n8n-runner@<server> 'cd /opt/homelab-infra &&
 make backup'`, the same path the release checker uses. A successful run is
-announced at minimum priority, a failed or unreadable one as urgent. A night
-that never ran at all is caught by `make healthcheck`, which reads the stamp
-the script writes after a fully successful run.
+announced at minimum priority.
+
+A failed or unreadable run is **tried once more, two hours later**. A storage
+provider that answers `503 Service Unavailable` for a quarter of an hour, as
+on 2026-10-16, should cost a delay, not a night. One notification reports the
+outcome: success at the second attempt at normal priority, with the first
+attempt's errors, and two failures as urgent. The wait is the node *Wait 2
+hours, then retry*. To test it without waiting, import a copy with a manual
+trigger, a one-minute wait and a first attempt that fails on purpose.
+
+A night that never ran at all is caught by `make healthcheck`, which reads the
+stamp the script writes after a fully successful run.
 
 The JSON report on stdout is the contract with the workflow:
 
