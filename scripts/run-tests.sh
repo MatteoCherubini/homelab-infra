@@ -227,6 +227,23 @@ else
   ok ".env is not tracked"
 fi
 
+# ── 7b. No name of this installation ─────────────────────────────────────
+# Roles and placeholders only: the repository is meant to be published. The
+# real names — machines, domains, accounts, addresses — are listed one per
+# line in .private-names, which git ignores, so the list itself is never
+# published. Without that file there is nothing to compare against, and the
+# check says so instead of passing. LICENSE names its author on purpose.
+title "No name of this installation in tracked files"
+if [ ! -f .private-names ]; then
+  skip "no .private-names: list the real names there, one per line (git ignores it)"
+elif ! names=$(grep -vE '^[[:space:]]*(#|$)' .private-names) || [ -z "$names" ]; then
+  skip ".private-names lists no name"
+elif hits=$(git grep -n -I -i -w -F -f <(printf '%s\n' "$names") -- . ':!LICENSE' 2>/dev/null); then
+  bad "a real name in tracked files"; printf '%s\n' "$hits" | cut -c1-160 | sed 's/^/      /'
+else
+  ok "none of the $(printf '%s\n' "$names" | wc -l) names in .private-names appears"
+fi
+
 # ── 8. Unit tests ────────────────────────────────────────────────────────
 title "Unit tests"
 if out=$(python3 -m unittest discover -s tests 2>&1); then
