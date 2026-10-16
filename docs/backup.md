@@ -239,7 +239,9 @@ key() { read -rp "Access key id: " AWS_ACCESS_KEY_ID; read -rsp "Secret access k
 10. **n8n:** import `workflows/homelab-backup.json`, check that the SSH and ntfy
     credentials resolve, run it once by hand (an ntfy message titled
     `Homelab - Backup OK`), then activate it.
-11. `make healthcheck` → `last off-site backup  0 h ago`.
+11. `make healthcheck` → `last off-site backup  0 h ago`, and
+    `flow: Homelab Backup  active`: the flow n8n runs is the one in the
+    repository, published, with no duplicate.
 12. `make backup-maintenance` once, with the admin key → `no snapshot to
     remove` for each set, then the checks: the admin path works before the day
     it is needed.
