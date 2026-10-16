@@ -142,6 +142,28 @@ if want n8n; then
   else
     bad "reading the n8n database" "no response"
   fi
+
+  # Each flow kept in workflows/ must be the one n8n runs. An import replaces a
+  # flow only when the ids match — otherwise it adds a second one, and two
+  # nightly backups start together — and it always leaves the flow
+  # unpublished, which for the backup means no backup at all.
+  if [ -n "$WF" ]; then
+    title "n8n flows from workflows/"
+    for f in workflows/*.json; do
+      [ -f "$f" ] || continue
+      meta=$(python3 -c 'import json,sys; w=json.load(open(sys.argv[1])); print(w.get("id","")); print(w.get("name",""))' "$f" 2>/dev/null)
+      id=$(printf '%s\n' "$meta" | sed -n 1p); name=$(printf '%s\n' "$meta" | sed -n 2p)
+      if [ -z "$id" ] || [ -z "$name" ]; then bad "$f" "no id or name in the file"; continue; fi
+      qname=${name//\'/\'\'}
+      act=$(q "select active from workflow_entity where id = '$id'")
+      twins=$(q "select count(*) from workflow_entity where name = '$qname' and active and id <> '$id'")
+      if [ -z "$act" ]; then bad "flow: $name" "not in n8n with id $id: import $f"
+      elif [ "$act" != "t" ]; then bad "flow: $name" "imported but not published"
+      elif [ "${twins:-0}" != "0" ]; then bad "flow: $name" "another active flow has the same name"
+      else ok "flow: $name" "active, id $id"
+      fi
+    done
+  fi
 fi
 
 # A UPS the server cannot read protects nothing, and fails in silence: the

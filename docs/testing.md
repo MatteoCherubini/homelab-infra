@@ -72,6 +72,13 @@ another machine's newest configuration copy is older than
 sides of an upgrade is the most direct way to notice that a migration lost
 something.
 
+For each flow kept in `workflows/`, it checks that n8n runs that very flow:
+present under the file's id, published, and with no other active flow of the
+same name. An import replaces a flow only when the ids match, and otherwise
+adds a second one; it also always leaves the flow unpublished. Both happened
+to the nightly backup in October 2026, and either would have gone unnoticed
+until a night was missing.
+
 Where NUT is installed it also reads every UPS the server knows, and fails
 unless the status is on line: a UPS the server cannot read protects nothing,
 and says so nowhere else. See [ups](stacks/ups.md).
