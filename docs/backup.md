@@ -63,20 +63,30 @@ a client's data leaves the backups.
 
 | Set | `.env` keys | Holds | History |
 |-----|-------------|-------|---------|
-| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies, Forgejo, the genome vaults, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
+| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies (Immich's too), Forgejo, the genome vaults, the genomes' media without their RAW, Immich's profile pictures, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
 | `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings | Ten years |
+| `personal` | `BACKUP_PERSONAL_REPOSITORY`, `BACKUP_PERSONAL_PASSWORD` | `${PHOTO_PERSONAL_ROOT}`: the photographs chosen to keep, edited and RAW, one folder per project; the few uploads from Immich's phone app | Ten years |
 
 A set is a file: `backup/<set>.paths` (and optionally `<set>.exclude`). The
 credentials are `BACKUP_<SET>_REPOSITORY` and `BACKUP_<SET>_PASSWORD`, its
 history `BACKUP_<SET>_KEEP_*`, with `-` written as `_`. `make backup` picks up
 every set it finds.
 
+**A set added later** needs its two keys in `.env` first, then
+`./scripts/backup.sh init <set>` once: `make backup-init` initialises every set
+and stops at the first one that already exists. The bucket policy names
+`*/data/*` and its siblings, so it covers a new prefix without a change.
+
+**The personal set** is never a client's material and never the work. Its
+RAW make it the large one, so its restore drill takes a sample (below).
+[Photos](stacks/photos.md#backup-and-restore) has what Immich keeps where.
+
 **The archive** is a plain folder, readable in ten years without any software
 of ours. Nothing is deleted from it before its time; its history only covers
 mistakes. How documents reach it is decided outside this repository.
 
 **Not backed up, on purpose:** Ollama's models (downloadable again), the Redis
-queue, restic's cache, n8n's execution binary data, Vaultwarden's icon cache,
+queues, Immich's thumbnails, previews and converted videos (made again), restic's cache, n8n's execution binary data, Vaultwarden's icon cache,
 container images; Syncthing's index and Forgejo's queues and search indexes,
 rebuilt by the services; Forgejo's sessions, temporary files and download
 archives, and the access logs — worthless after a restore.
@@ -440,6 +450,10 @@ into a scratch directory, emptied before and after. The set holding the
 database copies has every Postgres dump opened with `pg_restore -l` and every
 SQLite copy checked with `pragma integrity_check`; every other set is restored
 whole, each file verified against the repository (`restic restore --verify`).
+Past `BACKUP_RESTORE_WHOLE_MAX_MB` (2 GB) a set is restored as a random sample
+of `BACKUP_RESTORE_SAMPLE_FILES` files instead, different every time, each
+verified the same way: a set of photographs restored whole would fill the disk
+the scratch directory is on.
 Every copy of another machine is checked against the `.sha256` written when
 it reached the server, and opened.
 Run it at least every quarter.

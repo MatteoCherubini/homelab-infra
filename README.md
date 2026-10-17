@@ -3,9 +3,9 @@
 A self-hosted infrastructure stack running on Ubuntu Server, managed entirely
 through Docker Compose and versioned as code.
 
-Thirteen services across six stacks — reverse proxying, Git hosting, workflow
+Sixteen services across seven stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
-manager, file sync and push notifications — plus a UPS subsystem that runs on
+manager, file sync, push notifications and a photo library — plus a UPS subsystem that runs on
 the host rather than in a container, because ordered shutdown means halting
 the host itself, and an encrypted off-site backup every night.
 
@@ -34,6 +34,9 @@ does not.
 | Forgejo             | `git`        | Self-hosted Git forge                       |
 | Vaultwarden         | `security`   | Bitwarden-compatible password manager       |
 | Excalidraw          | `tools`      | Whiteboard                                  |
+| Immich              | `photos`     | Photo library and derivatives, tailnet only |
+| PostgreSQL 14       | `photos`     | Immich persistence, with VectorChord        |
+| Valkey 9            | `photos`     | Immich job queue                            |
 
 ---
 
@@ -83,7 +86,8 @@ Detail lives in [`docs/`](docs/README.md).
 [automation](docs/stacks/automation.md) ·
 [git](docs/stacks/git.md) ·
 [security](docs/stacks/security.md) ·
-[tools](docs/stacks/tools.md)
+[tools](docs/stacks/tools.md) ·
+[photos](docs/stacks/photos.md)
 
 **Host-level**
 

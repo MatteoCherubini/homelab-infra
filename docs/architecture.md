@@ -1,6 +1,6 @@
 # Architecture
 
-A single Ubuntu Server host running thirteen services in six stacks, run as
+A single Ubuntu Server host running sixteen services in seven stacks, run as
 two Docker Compose projects, plus a UPS subsystem that deliberately runs on the host rather than in
 a container.
 
@@ -21,6 +21,7 @@ include:
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
+  - stacks/photos/compose.yml
 ```
 
 Disabling a stack is commenting out one line. Stacks are grouped by
@@ -35,6 +36,7 @@ the others.
 | `git` | forgejo | [git](stacks/git.md) |
 | `security` | vaultwarden | [security](stacks/security.md) |
 | `tools` | excalidraw | [tools](stacks/tools.md) |
+| `photos` | immich-server, immich-db, immich-redis | [photos](stacks/photos.md) |
 
 Because the network is declared at the root and inherited through the merge,
 included files must not redeclare it.
@@ -127,11 +129,14 @@ the LAN at all.
 
 | Path | Holds |
 |------|-------|
-| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models |
+| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models, Immich's thumbnails |
 | `${MEDIA_ROOT}` | Forgejo repositories, on the RAID array |
 | `${MEDIA_ROOT}/backup/dumps` | Consistent database copies, refreshed before every off-site backup |
 | `${MEDIA_ROOT}/archive` | Documents kept ten years — contracts, invoices, filings — backed up as a set of their own |
 | `${MEDIA_ROOT}/host-configs` | The firewall's, the hypervisor's and the guests' configuration, copied from the laptop — see [backup](backup.md#other-machines) |
+| `${MEDIA_ROOT}/immich` | Immich's own files: the phone app's uploads, profile pictures, converted videos — see [photos](stacks/photos.md#folders) |
+| `${GENOME_MEDIA_ROOT}` | One folder per genome, `media/` catalogued by Immich read-only, `sorgenti/` (RAW) and `inbox/` beside it |
+| `${PHOTO_PERSONAL_ROOT}` | One folder per personal project, the same shape; backed up as the `personal` set |
 | Off-site (S3) | restic repositories, one per backup set, encrypted on this host — see [backup](backup.md) |
 
 Nothing stateful is tracked in git. Both roots live outside the repository
