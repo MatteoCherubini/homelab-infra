@@ -1,0 +1,75 @@
+{
+  "backup": {
+    "database": {
+      "enabled": true,
+      "cronExpression": "0 02 * * *",
+      "keepLastAmount": 7
+    }
+  },
+  "ffmpeg": {
+    "accel": "disabled",
+    "transcode": "required"
+  },
+  "image": {
+    "extractEmbedded": true,
+    "preview": {
+      "format": "webp",
+      "quality": 80,
+      "size": 1440
+    },
+    "thumbnail": {
+      "format": "webp",
+      "quality": 80,
+      "size": 250
+    }
+  },
+  "job": {
+    "backgroundTask": { "concurrency": 2 },
+    "library": { "concurrency": 2 },
+    "metadataExtraction": { "concurrency": 2 },
+    "thumbnailGeneration": { "concurrency": 2 },
+    "videoConversion": { "concurrency": 1 }
+  },
+  "library": {
+    "scan": {
+      "enabled": true,
+      "cronExpression": "0 0 * * *"
+    },
+    "watch": {
+      "enabled": false
+    }
+  },
+  "machineLearning": {
+    "enabled": false,
+    "clip": { "enabled": false },
+    "duplicateDetection": { "enabled": false },
+    "facialRecognition": { "enabled": false },
+    "ocr": { "enabled": false }
+  },
+  "map": {
+    "enabled": false
+  },
+  "metadata": {
+    "faces": { "import": false }
+  },
+  "newVersionCheck": {
+    "enabled": false
+  },
+  "nightlyTasks": {
+    "clusterNewFaces": false,
+    "startTime": "00:00"
+  },
+  "reverseGeocoding": {
+    "enabled": true
+  },
+  "server": {
+    "publicUsers": false
+  },
+  "storageTemplate": {
+    "enabled": false
+  },
+  "trash": {
+    "enabled": true,
+    "days": 30
+  }
+}
