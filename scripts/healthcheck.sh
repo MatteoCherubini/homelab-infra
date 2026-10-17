@@ -83,7 +83,10 @@ http() {
 # `-a` matters: without it `ps -q` lists only RUNNING containers, so a stopped
 # or created one is reported as "no container" — the least useful thing to say
 # at exactly the moment someone is diagnosing why a service is down.
-cid() { docker compose ps -qa "$1" 2>/dev/null | head -1; }
+# The AI stack is a project of its own (docs/stacks/ai.md), so both are asked;
+# each answers only for its own services.
+AI_COMPOSE=(docker compose --project-directory . -f stacks/ai/compose.yml)
+cid() { { docker compose ps -qa "$1"; "${AI_COMPOSE[@]}" ps -qa "$1"; } 2>/dev/null | head -1; }
 
 # state <service> — running, and healthy when the service declares a healthcheck.
 state() {

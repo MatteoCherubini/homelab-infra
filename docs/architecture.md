@@ -1,21 +1,22 @@
 # Architecture
 
-A single Ubuntu Server host running thirteen services in six Docker Compose
-stacks, plus a UPS subsystem that deliberately runs on the host rather than in
+A single Ubuntu Server host running thirteen services in six stacks, run as
+two Docker Compose projects, plus a UPS subsystem that deliberately runs on the host rather than in
 a container.
 
 ---
 
 ## Stacks
 
-`docker-compose.yml` at the root does three things: it includes the stacks, it
-declares the shared network, and it names the one shared volume. Each stack is
-a directory under `stacks/` containing a single `compose.yml`.
+`docker-compose.yml` at the root does four things: it fixes the project name,
+it includes the stacks, it declares the shared network, and it names the one
+shared volume. Each stack is a directory under `stacks/` containing a single
+`compose.yml`.
 
 ```yaml
+name: homelab-infra
 include:
   - stacks/core/compose.yml
-  - stacks/ai/compose.yml
   - stacks/automation/compose.yml
   - stacks/git/compose.yml
   - stacks/tools/compose.yml
@@ -29,7 +30,7 @@ the others.
 | Stack | Services | Doc |
 |-------|----------|-----|
 | `core` | nginx, homepage, cloudflared, ntfy | [core](stacks/core.md) |
-| `ai` | ollama | [ai](stacks/ai.md) |
+| `ai` (own project) | ollama | [ai](stacks/ai.md) |
 | `automation` | n8n, n8n-worker, n8n-db, n8n-redis, syncthing | [automation](stacks/automation.md) |
 | `git` | forgejo | [git](stacks/git.md) |
 | `security` | vaultwarden | [security](stacks/security.md) |
@@ -37,6 +38,12 @@ the others.
 
 Because the network is declared at the root and inherited through the merge,
 included files must not redeclare it.
+
+**The `ai` stack is the exception:** it holds the GPU, so it runs as a project
+of its own, `homelab-ai`, under its own systemd unit, and joins the network as
+`external` (`homelab-infra_homelab`, a name the fixed project name keeps
+stable). A broken NVIDIA driver then stops Ollama and nothing else. See
+[the AI stack](stacks/ai.md#a-project-of-its-own).
 
 ---
 
@@ -136,9 +143,10 @@ image.
 
 ## GPU
 
-One NVIDIA GPU, shared by declaration rather than by contention: Ollama
-reserves it with the `gpu` capability for inference, Homepage reserves it with
-only `utility` to read telemetry for the dashboard.
+One NVIDIA GPU, reserved by one container: Ollama, with the `gpu` capability.
+It is the one part of the host an unattended update can take away under a
+running container, so everything that reserves it lives in the `ai` project
+and nowhere else.
 
 ---
 
