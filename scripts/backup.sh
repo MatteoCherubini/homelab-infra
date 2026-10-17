@@ -43,6 +43,8 @@ absolute() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$REPO_DIR" 
 DATA_ROOT=$(absolute "$(env_get DATA_ROOT ./data)")
 MEDIA_ROOT=$(absolute "$(env_get MEDIA_ROOT ./media)")
 GENOME_VAULTS_ROOT=$(env_get GENOME_VAULTS_ROOT /srv/genome-vaults)
+GENOME_MEDIA_ROOT=$(absolute "$(env_get GENOME_MEDIA_ROOT "$MEDIA_ROOT/genomes")")
+PHOTO_PERSONAL_ROOT=$(absolute "$(env_get PHOTO_PERSONAL_ROOT "$MEDIA_ROOT/personal")")
 RESTIC_IMG="$(env_get RESTIC_IMAGE restic/restic):$(env_get RESTIC_VERSION latest)"
 TOOLS_IMG="$(env_get BACKUP_TOOLS_IMAGE alpine):$(env_get BACKUP_TOOLS_VERSION latest)"
 # pg_restore for the restore drill: the same image the database runs on.
@@ -77,6 +79,8 @@ expand() {
   s=${s//'${DATA_ROOT}'/$DATA_ROOT}
   s=${s//'${MEDIA_ROOT}'/$MEDIA_ROOT}
   s=${s//'${GENOME_VAULTS_ROOT}'/$GENOME_VAULTS_ROOT}
+  s=${s//'${GENOME_MEDIA_ROOT}'/$GENOME_MEDIA_ROOT}
+  s=${s//'${PHOTO_PERSONAL_ROOT}'/$PHOTO_PERSONAL_ROOT}
   s=${s//'${REPO_DIR}'/$REPO_DIR}
   printf '%s' "$s"
 }
@@ -334,13 +338,28 @@ holds() {
   return 1
 }
 
-# Every file of the latest snapshot, read back and checked. An empty archive
-# is legitimate at the start, so it is reported, not failed.
+# Every file of the latest snapshot, read back and checked — up to
+# BACKUP_RESTORE_WHOLE_MAX_MB. Past it, a random sample of
+# BACKUP_RESTORE_SAMPLE_FILES files, different every time: a set of
+# photographs restored whole would fill the disk the restore lands on. An
+# empty archive is legitimate at the start, so it is reported, not failed.
 restore_whole() {
-  local set=$1 n
+  local set=$1 n size max files=() includes=() f
   RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
-  log "$set: restoring the latest snapshot whole, every file verified"
-  restic_cmd restore latest --target "$SCRATCH" --verify || { log "ERROR: $set: restore failed"; return 1; }
+  max=$(( $(env_get BACKUP_RESTORE_WHOLE_MAX_MB 2048) * 1024 * 1024 ))
+  size=$(restic_cmd stats latest --json | jq -r '.total_size')
+  [[ $size =~ ^[0-9]+$ ]] || { log "ERROR: $set: cannot read the size of the latest snapshot"; return 1; }
+  if [ "$size" -le "$max" ]; then
+    log "$set: restoring the latest snapshot whole, every file verified"
+  else
+    mapfile -t files < <(restic_cmd ls latest --json | jq -r 'select(.type == "file") | .path' \
+                           | shuf -n "$(env_get BACKUP_RESTORE_SAMPLE_FILES 25)")
+    [ "${#files[@]}" -gt 0 ] || { log "ERROR: $set: cannot list the latest snapshot"; return 1; }
+    for f in "${files[@]}"; do includes+=(--include "$f"); done
+    log "$set: $(( size / 1048576 )) MB, past BACKUP_RESTORE_WHOLE_MAX_MB: restoring ${#files[@]} files at random, each verified"
+  fi
+  restic_cmd restore latest --target "$SCRATCH" --verify "${includes[@]}" \
+    || { log "ERROR: $set: restore failed"; return 1; }
   n=$(docker run --rm --mount "type=bind,src=$SCRATCH,dst=/r,readonly" "$TOOLS_IMG" \
         sh -c 'find /r -type f | wc -l') || { log "ERROR: $set: cannot count the restored files"; return 1; }
   if [ "$n" -gt 0 ]; then log "$set: ok, $n files restored and verified"
