@@ -125,6 +125,15 @@ make healthcheck                                  # → only the two ollama rows
 sudo systemctl start homelab-ai                   # → active; make healthcheck all green
 ```
 
+Run on 2026-10-17 with Compose 5.5.1, all three as expected: the ordered
+restart came back whole; with the port taken the main unit restarted
+`active` while `homelab-ai` stayed `failed`, and only the two Ollama rows of
+the health check were red (35/2); with the container left `Created` on a
+network that no longer existed, `systemctl start homelab-ai` recreated it and
+the check went back to 37/0. A health check run in the first seconds after a
+restart also shows n8n, Vaultwarden and Excalidraw still starting: run it
+again after half a minute.
+
 ## Storage
 
 Models live in `${DATA_ROOT}/ollama/data`, mounted at `/root/.ollama`. This is
