@@ -1,5 +1,13 @@
 # ── AI: Ollama, on a dedicated NVIDIA GPU ──
 # docs/stacks/ai.md
+#
+# A project of its own, not included by the root file: a container with a GPU
+# reservation that cannot start makes `docker compose up` abort, and inside the
+# main project that left n8n in `Created` (2026-09-21). Run from the repository
+# root, so .env and relative paths resolve as for the rest:
+#   docker compose --project-directory . -f stacks/ai/compose.yml up -d
+# Under systemd: homelab-ai.service, documented in docs/stacks/ai.md.
+name: homelab-ai
 
 services:
   ollama:
@@ -24,3 +32,10 @@ services:
       homelab:
         aliases:
           - ollama
+
+# The main project's network, joined from outside: n8n keeps reaching Ollama
+# as ollama:11434. The name is fixed by `name: homelab-infra` in the root file.
+networks:
+  homelab:
+    name: homelab-infra_homelab
+    external: true

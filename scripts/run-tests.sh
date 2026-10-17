@@ -103,6 +103,47 @@ while read -r inc; do
   if [ -f "$inc" ]; then ok "include -> $inc"; else bad "include -> $inc (file missing)"; fi
 done < <(grep -E '^\s*-\s+stacks/.*\.yml\s*$' docker-compose.yml | sed -E 's/^\s*-\s+//; s/\s*$//')
 
+# ── 5b. Stacks that run as a project of their own ───────────────────────
+# A stack the root file does not include is either forgotten or deliberately
+# separate, like the AI stack that holds the GPU (docs/stacks/ai.md). Separate
+# means: its own `name:`, the shared network joined as external, and every
+# tool that reads the stack — the Makefile, the health check, the update
+# checker — asking that project too. A tool that does not ask it reports its
+# services as missing, or drops them from the manifest without a word.
+title "Compose: stacks outside the root file run as their own project"
+if python3 -c "import yaml" 2>/dev/null; then
+  if out=$(python3 - <<'PY' 2>&1
+import glob, re, sys, yaml
+root = open('docker-compose.yml', encoding='utf-8').read()
+included = set(re.findall(r'^\s*-\s+(stacks/\S+\.yml)\s*$', root, re.M))
+tools = {f: open(f, encoding='utf-8').read()
+         for f in ('Makefile', 'scripts/healthcheck.sh', 'scripts/check_updates.py')}
+bad = 0
+for f in sorted(glob.glob('stacks/*/compose.yml')):
+    if f in included:
+        continue
+    doc = yaml.safe_load(open(f, encoding='utf-8')) or {}
+    if not doc.get('name'):
+        print(f"{f}: not included by the root file and has no `name:` of its own"); bad += 1
+    for net, conf in (doc.get('networks') or {}).items():
+        if not (conf or {}).get('external'):
+            print(f"{f}: network {net} is not external, so the services would not reach the rest"); bad += 1
+    for tool, text in tools.items():
+        if f not in text:
+            print(f"{f}: {tool} does not ask this project"); bad += 1
+    if not bad:
+        print(f"{f}: project {doc['name']}")
+sys.exit(1 if bad else 0)
+PY
+); then
+    ok "every stack outside the root file is a project the tools know ($(printf '%s' "$out" | tr '\n' ' ' | sed 's/ $//'))"
+  else
+    bad "a stack outside the root file is not a complete project"; printf '%s\n' "$out" | sed 's/^/      /'
+  fi
+else
+  skip "PyYAML not installed: separate projects not checked (pip install pyyaml)"
+fi
+
 # ── 6. Documentation links ───────────────────────────────────────────────
 # Relative links between documents are the first thing to rot when a file is
 # renamed or moved, and nothing else notices until a reader follows one.

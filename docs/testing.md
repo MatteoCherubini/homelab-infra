@@ -17,6 +17,7 @@ rather than after.
 | Python syntax | |
 | Tracked JSON parses | `services_metadata.json` drives the checker; `workflows/` are n8n exports, and broken JSON surfaces at import time, which is when it is needed |
 | Every compose file parses, every include resolves | A wrong include path breaks *every* compose command, not just that stack |
+| A stack the root file does not include has its own `name:`, joins the network as `external`, and is asked by the Makefile, the health check and the update checker | The AI stack runs apart so a GPU failure stops only it; a tool that forgets that project reports Ollama as missing, or drops it from the update manifest without a word |
 | Workflows and host scripts reach other machines by role, never by name or private address | A host name or an address written in is silently wrong on the next machine this is cloned to |
 | Every event the UPS runbook configures has a case in `host/kg-ups-handler`, and its `upsmon.conf` sets `POWERDOWNFLAG` | NUT is configured by hand from the runbook; an event renamed on one side only ends in "unknown event" during the outage itself, and a missing flag means no killpower, silently |
 | No private key or JWT in tracked files; `.env` not tracked | The check that matters before publishing |
@@ -30,15 +31,17 @@ suite reports one skip rather than a clean sweep.
 
 ### The unit tests
 
-24 tests, standard library only — nothing to install — with HTTP calls replaced
+30 tests, standard library only — nothing to install — with HTTP calls replaced
 by canned responses.
 
 They exist for one reason: `scripts/check_updates.py` **fails silently**. If
 release selection wrongly discards a valid release it raises nothing and
 reports "no updates", which is indistinguishable from there genuinely being
-none. Each test pins one concrete way of failing like that, including the two
+none. Each test pins one concrete way of failing like that, including the
 defects found in this codebase — picking whichever release the forge listed
-first, and matching pre-release keywords as bare substrings.
+first, matching pre-release keywords as bare substrings, and a display name
+carried over from the previous service (or a crash, when a dependency came
+first). Others check that the manifest reads both compose projects.
 
 `tests/test_check_updates.py` also asserts on `services_metadata.json` itself:
 a service that loses its `repo` or owner/name pair stays *tracked* but becomes

@@ -29,9 +29,10 @@ meaningful health endpoint, rather than trusting the status code alone.
 
 ## Homepage
 
-Reads `/var/run/docker.sock` read-only to discover containers. It also holds an
-NVIDIA device reservation with `utility` capability, which gives it GPU
-telemetry without claiming compute — see [the AI stack](ai.md).
+Reads `/var/run/docker.sock` read-only to discover containers. It holds no
+GPU reservation: one would put the dashboard in the GPU's failure domain, and
+with a broken driver it would go down exactly when it is wanted — see
+[the AI stack](ai.md).
 
 `HOMEPAGE_ALLOWED_HOSTS` must list the hostnames the dashboard is served on, or
 it refuses the request. It defaults to `*` here.

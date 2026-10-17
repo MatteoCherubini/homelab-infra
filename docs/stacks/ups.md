@@ -324,6 +324,8 @@ sudo systemctl enable --now homelab-compose
 
 > `RemainAfterExit=yes` is what makes `compose up -d` bring everything back at boot, and makes `systemctl stop` run the clean `compose down` that `kg-ups-handler` invokes.
 
+The AI stack has a unit of its own, `homelab-ai.service` ([the AI stack](ai.md#a-project-of-its-own)). It requires this one and is ordered after it, so `systemctl stop homelab-compose` stops Ollama first and then the rest: the handler needs no change.
+
 ---
 
 ## 🧪 Test procedure
@@ -417,6 +419,7 @@ Harmless: nothing is shut down.
 | The server does not restart after an outage | BIOS "Power On after AC loss" = OFF, or the UPS never cut its outlets | Enable it in the BIOS; test killpower (section 6) |
 | After `upsmon -c fsd` the server halts and the UPS outlets stay on | No `POWERDOWNFLAG` in `upsmon.conf`: the flag is never written, and the late-shutdown hook skips the UPS without a word | Add `POWERDOWNFLAG /etc/killpower`. `upsmon -K` cannot tell the two apart: it says "Power down flag is not set" with or without the line |
 | Containers do not start at boot | `homelab-compose.service` not enabled | `sudo systemctl enable homelab-compose` |
+| Everything starts at boot but Ollama | `homelab-ai.service` failed (GPU, driver) or not enabled | `systemctl status homelab-ai`; [the AI stack](ai.md) |
 
 ---
 
