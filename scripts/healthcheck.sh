@@ -43,6 +43,9 @@ NTFY_PORT=$(env_get NTFY_PORT 8091)
 EXCALIDRAW_PORT=$(env_get EXCALIDRAW_PORT 8092)
 VAULTWARDEN_PORT=$(env_get VAULTWARDEN_PORT 8096)
 SYNCTHING_GUI_PORT=$(env_get SYNCTHING_GUI_PORT 8384)
+IMMICH_PORT=$(env_get IMMICH_PORT 2283)
+IMMICH_DB_USER=$(env_get IMMICH_DB_USER immich)
+IMMICH_DB_NAME=$(env_get IMMICH_DB_NAME immich)
 N8N_DB_USER=$(env_get N8N_DB_USER n8n)
 N8N_DB_NAME=$(env_get N8N_DB_NAME n8n)
 DATA_ROOT=$(env_get DATA_ROOT ./data)
@@ -102,7 +105,7 @@ state() {
 
 title "Containers"
 for s in nginx homepage cloudflared ntfy forgejo n8n n8n-worker n8n-db n8n-redis \
-         syncthing ollama excalidraw vaultwarden; do
+         syncthing ollama excalidraw vaultwarden immich-server immich-db immich-redis; do
   want "$s" && state "$s"
 done
 
@@ -117,6 +120,7 @@ want ntfy        && http "ntfy"              "http://127.0.0.1:${NTFY_PORT}/v1/h
 want excalidraw  && http "excalidraw"        "http://127.0.0.1:${EXCALIDRAW_PORT}/"                 200
 want vaultwarden && http "vaultwarden"       "http://127.0.0.1:${VAULTWARDEN_PORT}/alive"           200
 want syncthing   && http "syncthing"         "http://127.0.0.1:${SYNCTHING_GUI_PORT}/rest/noauth/health" 200 '"status": *"OK"'
+want immich-server && http "immich"         "http://127.0.0.1:${IMMICH_PORT}/api/server/ping"      200 '"res": *"pong"'
 
 title "Persistence"
 if want n8n-db; then
@@ -128,6 +132,16 @@ if want n8n-redis; then
   if [ "$(docker compose exec -T n8n-redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]; then
     ok "redis responding"
   else bad "redis responding"; fi
+fi
+if want immich-db; then
+  if docker compose exec -T immich-db pg_isready -U "${IMMICH_DB_USER}" -d "${IMMICH_DB_NAME}" >/dev/null 2>&1; then
+    ok "immich postgres accepting connections"
+  else bad "immich postgres accepting connections"; fi
+fi
+if want immich-redis; then
+  if [ "$(docker compose exec -T immich-redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]; then
+    ok "immich valkey responding"
+  else bad "immich valkey responding"; fi
 fi
 
 # These numbers are not a health check but a fingerprint: comparing them

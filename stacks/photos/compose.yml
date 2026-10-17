@@ -1,0 +1,92 @@
+# ── PHOTOS: Immich, the media workshop — never the shop window ──
+# docs/stacks/photos.md
+#
+# Three services, no machine learning: the folders are organised by client and
+# project, so search by content is left out of the base version. Adding it is
+# one service and one key in immich-config.json (docs/stacks/photos.md).
+#
+# Reached only through `tailscale serve` on the host: the port is published on
+# 127.0.0.1, never on the LAN, never on the internet.
+
+services:
+  immich-server:
+    image: ${IMMICH_SERVER_IMAGE}:${IMMICH_VERSION}
+    restart: unless-stopped
+    # Not `env_file: .env`, as the upstream file does: that would hand every
+    # secret of every stack to this container. Only what it needs.
+    environment:
+      TZ: ${TZ}
+      DB_HOSTNAME: immich-db
+      DB_USERNAME: ${IMMICH_DB_USER}
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD}
+      DB_DATABASE_NAME: ${IMMICH_DB_NAME}
+      REDIS_HOSTNAME: immich-redis
+      # The file decides every setting, and the web UI can no longer change them.
+      IMMICH_CONFIG_FILE: /config/immich-config.json
+      # true only for the first sign-up of the admin; false also turns off the
+      # restore from the web UI, so a restore goes through the command line.
+      IMMICH_ALLOW_SETUP: ${IMMICH_ALLOW_SETUP:-false}
+    ports:
+      - "127.0.0.1:${IMMICH_PORT:-2283}:2283"
+    volumes:
+      - ${MEDIA_ROOT}/immich:/data
+      # Thumbnails on the SSD: the timeline reads them, they are regenerated,
+      # and they stay out of the backup.
+      - ${DATA_ROOT}/immich/thumbs:/data/thumbs
+      # External libraries, read-only: Immich catalogues them and never writes.
+      - ${GENOME_MEDIA_ROOT}:/libraries/genomes:ro
+      - ${PHOTO_PERSONAL_ROOT}:/libraries/personal:ro
+      - ./immich-config.json:/config/immich-config.json:ro
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      immich-db:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2560m
+    networks:
+      - homelab
+
+  immich-db:
+    # Immich's own PostgreSQL with VectorChord, which the server requires.
+    image: ${IMMICH_DB_IMAGE}:${IMMICH_DB_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${IMMICH_DB_USER}
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD}
+      POSTGRES_DB: ${IMMICH_DB_NAME}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    shm_size: 128mb
+    volumes:
+      # On the SSD: upstream warns against anything slower or networked.
+      - ${DATA_ROOT}/immich/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IMMICH_DB_USER} -d ${IMMICH_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    networks:
+      - homelab
+
+  immich-redis:
+    image: ${IMMICH_REDIS_IMAGE}:${IMMICH_REDIS_VERSION}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks:
+      - homelab

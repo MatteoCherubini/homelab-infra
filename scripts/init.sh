@@ -33,6 +33,8 @@ env_get() {
 
 DATA=$(env_get DATA_ROOT ./data)
 MEDIA=$(env_get MEDIA_ROOT ./media)
+GENOME_MEDIA=$(env_get GENOME_MEDIA_ROOT "$MEDIA/genomes")
+PERSONAL=$(env_get PHOTO_PERSONAL_ROOT "$MEDIA/personal")
 
 echo ""
 echo "📁 DATA_ROOT: $DATA"
@@ -47,8 +49,11 @@ dirs=(
     "$DATA/ollama/data"
     # Automation
     "$DATA/n8n/db" "$DATA/n8n/data" "$DATA/n8n/redis"
+    # Photos: the database and the thumbnails on the SSD
+    "$DATA/immich/postgres" "$DATA/immich/thumbs"
     # Media (RAID)
     "$MEDIA/forgejo/data"
+    "$MEDIA/immich" "$GENOME_MEDIA" "$PERSONAL"
 )
 
 for d in "${dirs[@]}"; do

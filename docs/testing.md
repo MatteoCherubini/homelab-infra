@@ -15,7 +15,7 @@ rather than after.
 |-------|-----|
 | Shell syntax, and `shellcheck` at `warning` severity | Behavioural defects only, not style — a gate that reports everything stops being read |
 | Python syntax | |
-| Tracked JSON parses | `services_metadata.json` drives the checker; `workflows/` are n8n exports, and broken JSON surfaces at import time, which is when it is needed |
+| Tracked JSON parses | `services_metadata.json` drives the checker; `workflows/` are n8n exports, and broken JSON surfaces at import time, which is when it is needed; a stack's settings file, like Immich's, stops that service from starting |
 | Every compose file parses, every include resolves | A wrong include path breaks *every* compose command, not just that stack |
 | A stack the root file does not include has its own `name:`, joins the network as `external`, and is asked by the Makefile, the health check and the update checker | The AI stack runs apart so a GPU failure stops only it; a tool that forgets that project reports Ollama as missing, or drops it from the update manifest without a word |
 | Workflows and host scripts reach other machines by role, never by name or private address | A host name or an address written in is silently wrong on the next machine this is cloned to |

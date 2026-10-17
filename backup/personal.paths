@@ -1,0 +1,7 @@
+# Backup set "personal": the photographs chosen to keep — one folder per
+# project, the edited media/ and the RAW in sorgenti/ — and the few photos
+# uploaded from the phone app. Never a client's material, never the work.
+# Placeholders and `?` as in work.paths. Credentials: BACKUP_PERSONAL_* in
+# .env; history: BACKUP_PERSONAL_KEEP_*. docs/backup.md
+${PHOTO_PERSONAL_ROOT}
+?${MEDIA_ROOT}/immich/upload
