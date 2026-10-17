@@ -75,7 +75,7 @@ After=docker.service homelab-compose.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/homelab-infra
-ExecStart=/usr/bin/docker compose --project-directory . -f stacks/ai/compose.yml up -d
+ExecStart=/usr/bin/docker compose --project-directory . -f stacks/ai/compose.yml up -d --force-recreate
 ExecStop=/usr/bin/docker compose --project-directory . -f stacks/ai/compose.yml down --timeout 30
 TimeoutStopSec=60
 
@@ -94,6 +94,13 @@ sudo systemctl enable --now homelab-ai
   both; `needrestart` cycling the main unit cycles this one too, in order.
 - The dependency runs one way: this unit failing never fails the main one.
 - `sudo systemctl restart homelab-ai` touches Ollama alone.
+- `--force-recreate`, because of what a failed start leaves behind: a container
+  in `Created`, holding the id of the network as it was then. Stopping the main
+  project removes that network and starting it makes a new one, and Compose
+  (v5.5.1, `mustRecreate`) checks the network only of *running* containers. The
+  old container would be started as it is and fail on the missing network, so
+  the reboot that fixes a broken driver would leave Ollama down anyway.
+  Recreating it at every start costs seconds; the models are on disk.
 
 **The test of the failure.** First the order, with everything healthy:
 
