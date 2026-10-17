@@ -177,6 +177,11 @@ on every call from a scheduled workflow.
 ## Who calls it
 
 The n8n update-checker workflow uses it to rank available updates by risk.
+It reaches it by name on the Docker network (`http://ollama:11434`), which the
+separate project keeps. When Ollama does not answer, the list of updates still
+goes out on its own branch, and the ranking node continues on failure
+(`continueOnFail`), so a second notification says "No response from Ollama"
+instead of the run ending in an error nobody sees.
 
 That output is an aid, not an authority: the model has no access to upstream
 release notes and reasons from version numbers alone. It called a Forgejo patch
