@@ -1,4 +1,4 @@
-## Version 0.6.7
+## Version 0.6.8
 .PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates \
   backup backup-init backup-snapshots backup-restore-test backup-maintenance
 
