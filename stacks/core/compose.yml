@@ -27,15 +27,8 @@ services:
       PUID: "${PUID:-1000}"
       PGID: "${PGID:-1000}"
       HOMEPAGE_ALLOWED_HOSTS: "${HOMEPAGE_ALLOWED_HOSTS:-*}"
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [utility]
+    # No GPU reservation: no widget read it, and with one a broken NVIDIA driver
+    # kept the dashboard down too. docs/stacks/core.md
     networks:
       - homelab
 
