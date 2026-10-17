@@ -24,6 +24,7 @@ the overview; this is the detail.
 | [git](stacks/git.md) | Forgejo |
 | [security](stacks/security.md) | Vaultwarden |
 | [tools](stacks/tools.md) | Excalidraw |
+| [photos](stacks/photos.md) | Immich, its PostgreSQL, Valkey |
 
 ## Host
 

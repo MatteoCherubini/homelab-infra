@@ -23,6 +23,12 @@
     "criticality": "low",
     "stack": "core"
   },
+  "immich-server": {
+    "repo": "immich-app/immich",
+    "criticality": "medium",
+    "stack": "photos",
+    "display_name": "Immich"
+  },
   "n8n": {
     "repo": "n8n-io/n8n",
     "criticality": "medium",

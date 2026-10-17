@@ -64,9 +64,10 @@ rm -rf scripts/__pycache__
 # ── 4. JSON ──────────────────────────────────────────────────────────────
 # services_metadata.json drives the update checker and the files under
 # workflows/ are n8n exports: broken JSON here surfaces at the next import,
-# which is exactly when it is needed.
+# which is exactly when it is needed. A stack's own settings file, like
+# Immich's, stops that service from starting.
 title "JSON files parse"
-for f in services_metadata.json workflows/*.json; do
+for f in services_metadata.json workflows/*.json stacks/*/*.json; do
   [ -f "$f" ] || continue
   if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f" 2>/dev/null; then
     ok "$f"
