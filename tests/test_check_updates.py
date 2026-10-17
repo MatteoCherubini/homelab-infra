@@ -319,5 +319,37 @@ class TestBuildManifestDisplayName(unittest.TestCase):
     def test_the_metadata_name_still_wins(self):
         self.assertEqual(self.manifest()["forgejo"]["display_name"], "Forgejo")
 
+
+# ──────────────────────────────────────────────────────────────────────────
+class TestRunComposeConfig(unittest.TestCase):
+    """
+    The AI stack is a compose project of its own: a manifest built from the
+    main project alone would drop Ollama without a word.
+    """
+
+    def run_with(self, *configs):
+        outs = [mock.Mock(stdout=json.dumps(c)) for c in configs]
+        with mock.patch.object(cu.subprocess, "run", side_effect=outs) as run:
+            merged = cu.run_compose_config()
+        return merged, [c.args[0] for c in run.call_args_list]
+
+    def test_merges_the_services_of_every_project(self):
+        merged, _ = self.run_with({"services": {"n8n": {"image": "n8n:1"}}},
+                                  {"services": {"ollama": {"image": "ollama:2"}}})
+        self.assertEqual(sorted(merged["services"]), ["n8n", "ollama"])
+
+    def test_asks_the_ai_project_by_its_own_file(self):
+        _, calls = self.run_with({"services": {}}, {"services": {}})
+        self.assertEqual(len(calls), len(cu.COMPOSE_PROJECTS))
+        self.assertIn("stacks/ai/compose.yml", calls[1])
+        self.assertNotIn("-f", calls[0])
+
+    def test_a_failing_project_is_not_silently_skipped(self):
+        err = cu.subprocess.CalledProcessError(1, "docker compose config")
+        with mock.patch.object(cu.subprocess, "run",
+                               side_effect=[mock.Mock(stdout='{"services": {}}'), err]):
+            with self.assertRaises(cu.subprocess.CalledProcessError):
+                cu.run_compose_config()
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

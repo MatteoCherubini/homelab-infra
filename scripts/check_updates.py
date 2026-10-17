@@ -48,6 +48,14 @@ SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR    = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 METADATA_PATH = os.path.join(BASE_DIR, "services_metadata.json")
 
+# The compose projects of this repository, as extra `docker compose` arguments:
+# the main one, and the AI stack, which runs as a project of its own so that a
+# broken GPU driver stops only Ollama (docs/stacks/ai.md).
+COMPOSE_PROJECTS = (
+    [],
+    ["--project-directory", ".", "-f", "stacks/ai/compose.yml"],
+)
+
 TIMEOUT     = 10    # seconds per HTTP request
 THROTTLE    = 1.5   # seconds between RSS requests (GitHub rate limit)
 
@@ -130,17 +138,22 @@ def load_metadata() -> dict:
 
 def run_compose_config() -> dict:
     """
-    Runs 'docker compose config --format json'.
-    Returns the services dictionary.
+    Runs 'docker compose config --format json' for every project in
+    COMPOSE_PROJECTS and merges their services into one configuration.
+    A project that fails raises, as a single one did before: a manifest
+    missing a project would report its services as gone, not as unchecked.
     """
-    result = subprocess.run(
-        ["docker", "compose", "config", "--format", "json"],
-        cwd=BASE_DIR,
-        capture_output=True,
-        text=True,
-        check=True
-    )
-    return json.loads(result.stdout)
+    services = {}
+    for extra in COMPOSE_PROJECTS:
+        result = subprocess.run(
+            ["docker", "compose", *extra, "config", "--format", "json"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        services.update(json.loads(result.stdout).get("services", {}))
+    return {"services": services}
 
 
 # ── Parsing versioni ──────────────────────────────────────────────────────────

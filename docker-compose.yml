@@ -9,9 +9,16 @@
 # ║    docker compose up -d forgejo      (a single service)      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
+# The project name is fixed rather than taken from the directory: the network
+# below is then always `homelab-infra_homelab`, and the AI stack, which runs as
+# a project of its own, can join it from any clone.
+name: homelab-infra
+
+# stacks/ai/compose.yml is NOT included: it holds the GPU, and runs as its own
+# project under its own systemd unit, so a broken NVIDIA driver stops Ollama
+# and nothing else. docs/stacks/ai.md
 include:
   - stacks/core/compose.yml
-  - stacks/ai/compose.yml
   - stacks/automation/compose.yml
   - stacks/git/compose.yml
   - stacks/tools/compose.yml

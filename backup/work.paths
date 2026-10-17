@@ -38,6 +38,7 @@ ${REPO_DIR}/.env
 ?/etc/ssh
 ?/etc/docker/daemon.json
 ?/etc/systemd/system/homelab-compose.service
+?/etc/systemd/system/homelab-ai.service
 ?/etc/nut
 ?/var/lib/nut/.ssh
 ?/home/n8n-runner/.ssh
