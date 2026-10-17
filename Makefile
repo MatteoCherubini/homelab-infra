@@ -1,4 +1,4 @@
-## Version 0.6.8
+## Version 0.6.9
 .PHONY: help up down restart logs ps pull check init check-env gpu-check verify health healthcheck test check-updates \
   backup backup-init backup-snapshots backup-restore-test backup-maintenance
 
@@ -15,9 +15,11 @@ help: ## Show this help
 init: ## First-run setup: .env, data directories, permissions
 	@./scripts/init.sh
 
+# The AI project is always recreated: a container left `Created` by a failed
+# start keeps a network that may no longer exist. docs/stacks/ai.md
 up: ## Start everything and remove orphan containers
 	docker compose up -d --remove-orphans
-	$(AI_COMPOSE) up -d --remove-orphans
+	$(AI_COMPOSE) up -d --force-recreate --remove-orphans
 
 down: ## Stop everything
 	$(AI_COMPOSE) down
