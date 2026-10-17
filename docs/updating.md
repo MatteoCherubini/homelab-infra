@@ -79,6 +79,10 @@ make healthcheck                              # after
 
 `--no-deps` keeps the blast radius to the service being touched.
 
+Ollama is in a project of its own: for it, the same commands start with
+`docker compose --project-directory . -f stacks/ai/compose.yml` instead of
+`docker compose`. See [the AI stack](stacks/ai.md#a-project-of-its-own).
+
 Because tags are pinned, rolling a **container** back is restoring the previous
 value in `.env`. Rolling a **database migration** back is not — which is why
 the snapshot comes first, and why `make healthcheck` prints a data fingerprint

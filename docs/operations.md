@@ -88,8 +88,9 @@ switch branches first, then clean.
 the machine is running leaves the kernel module and the userspace libraries
 mismatched, and stops `nvidia-persistenced`; every container holding a GPU
 reservation then refuses to start. `needrestart` may cycle
-`homelab-compose.service` in the same window, restarting the whole stack.
-Check `/var/run/reboot-required` before concluding something else broke. See
+`homelab-compose.service` in the same window, restarting the whole stack; the
+AI stack has a unit of its own, so that leaves `homelab-ai.service` failed and
+the rest running. Check `/var/run/reboot-required` before concluding something else broke. See
 [the AI stack](stacks/ai.md).
 
 **Restarting a service that others poll** produces a transient failure in the
