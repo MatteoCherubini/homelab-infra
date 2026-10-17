@@ -273,12 +273,16 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
 
         meta = metadata_map.get(s_name)
 
+        # Set for every service here, before the branches: the dependency and
+        # untracked branches used to read whatever the previous service had
+        # left in it, or crash when the first service was one of them.
+        display_name = ((meta or {}).get("display_name")
+                        or s_name.replace("-", " ").title())
+
         if meta:
             # ── Service present in services_metadata.json ───────────────────
             stack_name  = meta.get("stack", "unknown")
             criticality = meta.get("criticality", "low")
-
-            display_name = meta.get("display_name") or s_name.replace("-", " ").title()
 
             if meta.get("repo"):
                 # Standard GitHub-hosted service

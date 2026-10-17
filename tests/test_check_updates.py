@@ -287,5 +287,37 @@ class TestMetadataConsistency(unittest.TestCase):
                                 f"{name} is tracked but has no repository to query")
 
 
+
+# ──────────────────────────────────────────────────────────────────────────
+class TestBuildManifestDisplayName(unittest.TestCase):
+    """
+    The display name of a dependency or of an untracked service used to be
+    whatever the previous service had left in a shared variable, or a crash
+    when the first service was one of them.
+    """
+
+    SERVICES = {
+        "n8n-redis": {"image": "valkey/valkey:8"},
+        "forgejo":   {"image": "codeberg.org/forgejo/forgejo:11.0.1",
+                      "depends_on": {"n8n-redis": {}}},
+        "mystery":   {"image": "example/mystery:1.0"},
+    }
+    META = {"forgejo": {"stack": "git", "criticality": "critical",
+                        "display_name": "Forgejo", "repo": "go-gitea/gitea"}}
+
+    def manifest(self):
+        with mock.patch("sys.stderr"):
+            items, _ = cu.build_manifest(self.SERVICES, self.META)
+        return {i["compose_name"]: i for i in items}
+
+    def test_a_dependency_listed_first_does_not_crash(self):
+        self.assertEqual(self.manifest()["n8n-redis"]["display_name"], "N8N Redis")
+
+    def test_an_untracked_service_does_not_inherit_the_previous_name(self):
+        self.assertEqual(self.manifest()["mystery"]["display_name"], "Mystery")
+
+    def test_the_metadata_name_still_wins(self):
+        self.assertEqual(self.manifest()["forgejo"]["display_name"], "Forgejo")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
