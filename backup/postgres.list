@@ -3,3 +3,4 @@
 # The dump lands in ${MEDIA_ROOT}/backup/dumps/<service>.dump. docs/backup.md
 n8n-db  N8N_DB_USER  N8N_DB_NAME
 immich-db  IMMICH_DB_USER  IMMICH_DB_NAME
+paperless-db  PAPERLESS_DB_USER  PAPERLESS_DB_NAME

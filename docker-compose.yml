@@ -24,6 +24,7 @@ include:
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
   - stacks/photos/compose.yml
+  - stacks/documents/compose.yml
 
 networks:
   homelab:

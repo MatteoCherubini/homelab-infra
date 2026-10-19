@@ -54,6 +54,12 @@
     "criticality": "medium",
     "stack": "core"
   },
+  "paperless": {
+    "repo": "paperless-ngx/paperless-ngx",
+    "criticality": "medium",
+    "stack": "documents",
+    "display_name": "Paperless-ngx"
+  },
   "syncthing": {
     "repo": "syncthing/syncthing",
     "criticality": "medium",

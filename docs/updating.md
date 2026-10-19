@@ -95,7 +95,8 @@ early, while you are still watching it.
 Per-service upgrade notes live with each stack:
 [automation](stacks/automation.md) · [git](stacks/git.md) ·
 [security](stacks/security.md) · [core](stacks/core.md) ·
-[photos](stacks/photos.md#updating)
+[photos](stacks/photos.md#updating) ·
+[documents](stacks/documents.md#updating)
 
 ### Measure the baseline with the tool you will judge by
 

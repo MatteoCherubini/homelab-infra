@@ -189,6 +189,27 @@ dump_sqlite() {
   done
 }
 
+# ── Paperless's own export ────────────────────────────────────
+# The database dump brings Paperless back as it was; the export outlives it:
+# the originals under readable names, and a manifest that any later version
+# imports. It lands in ${MEDIA_ROOT}/archive/paperless, which the `archive` set
+# keeps ten years. Incremental: only new and changed files are written, and
+# --delete drops what was deleted in Paperless — the history keeps it.
+# Without archive copies and thumbnails, which Paperless makes again and which
+# would only grow a deduplicated backup. docs/stacks/documents.md
+export_paperless() {
+  docker compose config --services 2>/dev/null | grep -qx paperless || return 0
+  log "paperless document_exporter"
+  # stdout is the JSON report's: the exporter's own lines go to stderr.
+  if docker compose exec -T paperless document_exporter /usr/src/paperless/export \
+       --delete --use-filename-format --use-folder-prefix --no-archive --no-thumbnail \
+       --no-progress-bar </dev/null >&2; then
+    DUMPED+=("paperless-export")
+  else
+    fail "Paperless export failed"
+  fi
+}
+
 # ── One backup set ────────────────────────────────────────────
 
 # Prints which of the given paths exist, looked up as root inside a
@@ -259,6 +280,7 @@ cmd_run() {
     prepare_dirs
     dump_postgres
     dump_sqlite
+    export_paperless
     # A failed dump does not stop the run: the previous copy and every other
     # path still go off-site, and the run is reported as an error anyway.
     for set in "${sets[@]}"; do backup_set "$set"; done
@@ -318,6 +340,7 @@ cmd_restore_test() {
     clear_scratch
     if holds "$set" "$DUMP_DIR"; then restore_dumps "$set" || ok=0
     else restore_whole "$set" || ok=0; fi
+    if holds "$set" "$MEDIA_ROOT/archive"; then check_paperless_export "$set" || ok=0; fi
     if holds "$set" "$HOST_DIR"; then restore_host_configs "$set" || ok=0; fi
   done
   clear_scratch
@@ -343,14 +366,17 @@ holds() {
 # BACKUP_RESTORE_SAMPLE_FILES files, different every time: a set of
 # photographs restored whole would fill the disk the restore lands on. An
 # empty archive is legitimate at the start, so it is reported, not failed.
+RESTORED_WHOLE=0
 restore_whole() {
   local set=$1 n size max files=() includes=() f
+  RESTORED_WHOLE=0
   RESTIC_MOUNTS=(--mount "type=bind,src=$STATE_DIR,dst=$STATE_DIR")
   max=$(( $(env_get BACKUP_RESTORE_WHOLE_MAX_MB 2048) * 1024 * 1024 ))
   size=$(restic_cmd stats latest --json | jq -r '.total_size')
   [[ $size =~ ^[0-9]+$ ]] || { log "ERROR: $set: cannot read the size of the latest snapshot"; return 1; }
   if [ "$size" -le "$max" ]; then
     log "$set: restoring the latest snapshot whole, every file verified"
+    RESTORED_WHOLE=1
   else
     mapfile -t files < <(restic_cmd ls latest --json | jq -r 'select(.type == "file") | .path' \
                            | shuf -n "$(env_get BACKUP_RESTORE_SAMPLE_FILES 25)")
@@ -364,6 +390,26 @@ restore_whole() {
         sh -c 'find /r -type f | wc -l') || { log "ERROR: $set: cannot count the restored files"; return 1; }
   if [ "$n" -gt 0 ]; then log "$set: ok, $n files restored and verified"
   else log "$set: the latest snapshot holds no files yet, nothing to verify"; fi
+}
+
+# Paperless's export, as an import into a new Paperless would need it: the
+# manifest opens, and every document it lists has its original beside it.
+# Only after a whole restore: a sample of files says nothing about the pairs.
+check_paperless_export() {
+  local set=$1
+  [ "$RESTORED_WHOLE" -eq 1 ] || { log "$set: restored as a sample, the Paperless export is not checked"; return 0; }
+  docker run --rm --mount "type=bind,src=$SCRATCH,dst=/r,readonly" "$TOOLS_IMG" sh -c '
+    d="/r$1"
+    [ -e "$d/manifest.json" ] || { echo "no Paperless export yet, nothing to check" >&2; exit 0; }
+    apk add --no-cache jq >/dev/null || exit 2
+    # First, or a manifest that does not open would count as zero documents.
+    jq -e "type == \"array\"" "$d/manifest.json" >/dev/null \
+      || { echo "FAILED: the Paperless manifest does not open" >&2; exit 1; }
+    list() { jq -r ".[] | select(.model == \"documents.document\") | .__exported_file_name__" "$d/manifest.json"; }
+    n=$(list | wc -l)
+    missing=$(list | while IFS= read -r f; do [ -f "$d/$f" ] || echo "$f"; done)
+    [ -z "$missing" ] || { echo "FAILED: originals missing from the Paperless export:" >&2; echo "$missing" >&2; exit 1; }
+    echo "ok: Paperless export, $n documents, every original present" >&2' sh "$MEDIA_ROOT/archive/paperless"
 }
 
 # Postgres dumps opened with pg_restore -l, SQLite copies with integrity_check.

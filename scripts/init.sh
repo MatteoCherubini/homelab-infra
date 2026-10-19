@@ -51,9 +51,12 @@ dirs=(
     "$DATA/n8n/db" "$DATA/n8n/data" "$DATA/n8n/redis"
     # Photos: the database and the thumbnails on the SSD
     "$DATA/immich/postgres" "$DATA/immich/thumbs"
+    # Documents: the database, the search index and the classifier on the SSD
+    "$DATA/paperless/postgres" "$DATA/paperless/data"
     # Media (RAID)
     "$MEDIA/forgejo/data"
     "$MEDIA/immich" "$GENOME_MEDIA" "$PERSONAL"
+    "$MEDIA/paperless/media" "$MEDIA/paperless/consume" "$MEDIA/archive/paperless"
 )
 
 for d in "${dirs[@]}"; do

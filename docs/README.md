@@ -25,6 +25,7 @@ the overview; this is the detail.
 | [security](stacks/security.md) | Vaultwarden |
 | [tools](stacks/tools.md) | Excalidraw |
 | [photos](stacks/photos.md) | Immich, its PostgreSQL, Valkey |
+| [documents](stacks/documents.md) | Paperless-ngx, its PostgreSQL, Valkey |
 
 ## Host
 

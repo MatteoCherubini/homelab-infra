@@ -64,7 +64,7 @@ a client's data leaves the backups.
 | Set | `.env` keys | Holds | History |
 |-----|-------------|-------|---------|
 | `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies (Immich's too), Forgejo, the genome vaults, the genomes' media without their RAW, Immich's profile pictures, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
-| `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings | Ten years |
+| `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings; Paperless's export, every document's original under a readable name with its manifest | Ten years |
 | `personal` | `BACKUP_PERSONAL_REPOSITORY`, `BACKUP_PERSONAL_PASSWORD` | `${PHOTO_PERSONAL_ROOT}`: the photographs chosen to keep, edited and RAW, one folder per project; the few uploads from Immich's phone app | Ten years |
 
 A set is a file: `backup/<set>.paths` (and optionally `<set>.exclude`). The
@@ -83,10 +83,16 @@ RAW make it the large one, so its restore drill takes a sample (below).
 
 **The archive** is a plain folder, readable in ten years without any software
 of ours. Nothing is deleted from it before its time; its history only covers
-mistakes. How documents reach it is decided outside this repository.
+mistakes. Paperless writes its export into `archive/paperless` right before
+every run, so each document filed there goes off-site that night, under the
+name it has on disk; a document deleted in Paperless leaves the export, and
+stays in the history. [Documents](stacks/documents.md#backup-and-restore) has
+the rest.
 
 **Not backed up, on purpose:** Ollama's models (downloadable again), the Redis
-queues, Immich's thumbnails, previews and converted videos (made again), restic's cache, n8n's execution binary data, Vaultwarden's icon cache,
+queues, Immich's thumbnails, previews and converted videos (made again),
+Paperless's media folder (its originals are in the export; archive copies and
+thumbnails are made again) and its search index and classifier (rebuilt), restic's cache, n8n's execution binary data, Vaultwarden's icon cache,
 container images; Syncthing's index and Forgejo's queues and search indexes,
 rebuilt by the services; Forgejo's sessions, temporary files and download
 archives, and the access logs — worthless after a restore.
@@ -455,7 +461,9 @@ of `BACKUP_RESTORE_SAMPLE_FILES` files instead, different every time, each
 verified the same way: a set of photographs restored whole would fill the disk
 the scratch directory is on.
 Every copy of another machine is checked against the `.sha256` written when
-it reached the server, and opened.
+it reached the server, and opened. When the archive is restored whole,
+Paperless's export in it is checked as an import would need it: the manifest
+opens, and every document it lists has its original beside it.
 Run it at least every quarter.
 
 **One path**, into a scratch directory. The values are typed or pasted — not
