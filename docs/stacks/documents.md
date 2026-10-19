@@ -162,6 +162,13 @@ first, and take the latest patch that has gone a week without a fix.
 `paperless-db` follows n8n's PostgreSQL: a new major version means a dump and a
 restore, never a new tag on the old data.
 
+**Two pairs share an image:** `paperless-db` with `n8n-db`, `paperless-redis`
+with `immich-redis`. A pull for one moves the tag for both, and the other keeps
+running the old image, now nameless: `make verify` shows it as a bare
+`sha256:` and a mismatch. Recreate the other one afterwards — `docker compose
+up -d n8n-db` — or pull and start everything with `make up`. Within a major
+version the data needs nothing. Seen on 2026-10-19, at Paperless's first pull.
+
 ## Memory
 
 | Service | Limit |
