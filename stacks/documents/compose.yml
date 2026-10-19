@@ -1,0 +1,105 @@
+# ── DOCUMENTS: Paperless-ngx, the papers — never the bookkeeping ──
+# docs/stacks/documents.md
+#
+# Three services, no Tika and no Gotenberg: documents arrive as PDF or images,
+# never as Office files or whole emails. No AI on this host: it comes later,
+# from the AI node at night, as a second step.
+#
+# Reached only through `tailscale serve` on the host: the port is published on
+# 127.0.0.1, never on the LAN, never on the internet.
+
+services:
+  paperless:
+    image: ${PAPERLESS_IMAGE}:${PAPERLESS_VERSION}
+    restart: unless-stopped
+    # Not `env_file`, as the upstream file does: only what this service needs.
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: paperless-db
+      PAPERLESS_DBNAME: ${PAPERLESS_DB_NAME}
+      PAPERLESS_DBUSER: ${PAPERLESS_DB_USER}
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      # The tailnet address: sets the allowed hosts, CSRF and CORS together.
+      PAPERLESS_URL: ${PAPERLESS_URL}
+      PAPERLESS_TIME_ZONE: ${TZ}
+      # Italian and English are in the image already. Dates and the search
+      # stemmer follow this setting.
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-ita+eng}
+      # Kept low on purpose: one document at a time, two pages in parallel.
+      # The CPU stays with Immich, n8n and the ingests; a few documents a week
+      # do not need more.
+      PAPERLESS_TASK_WORKERS: "1"
+      PAPERLESS_THREADS_PER_WORKER: "2"
+      PAPERLESS_WEBSERVER_WORKERS: "1"
+      # Names on disk anyone can read without Paperless: also the way out.
+      PAPERLESS_FILENAME_FORMAT: "{{ created_year }}/{{ document_type }}/{{ correspondent }}/{{ title }}"
+      PAPERLESS_FILENAME_FORMAT_REMOVE_NONE: "true"
+      PAPERLESS_AI_ENABLED: "false"
+      # The files on the host belong to the same user as everything else.
+      USERMAP_UID: ${PUID:-1000}
+      USERMAP_GID: ${PGID:-1000}
+    ports:
+      - "127.0.0.1:${PAPERLESS_PORT:-8010}:8000"
+    volumes:
+      # The search index and the classifier on the SSD; they are rebuilt.
+      - ${DATA_ROOT}/paperless/data:/usr/src/paperless/data
+      # The originals on the array.
+      - ${MEDIA_ROOT}/paperless/media:/usr/src/paperless/media
+      - ${MEDIA_ROOT}/paperless/consume:/usr/src/paperless/consume
+      # The exporter's target, before every backup: the `archive` set, ten
+      # years. docs/stacks/documents.md
+      - ${MEDIA_ROOT}/archive/paperless:/usr/src/paperless/export
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_healthy
+    # A ceiling, not a reservation: measured during the first OCR of a scan.
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    networks:
+      - homelab
+
+  paperless-db:
+    # The same PostgreSQL as n8n's: one image to follow.
+    image: ${PAPERLESS_DB_IMAGE}:${PAPERLESS_DB_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAPERLESS_DB_USER}
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      POSTGRES_DB: ${PAPERLESS_DB_NAME}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ${DATA_ROOT}/paperless/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAPERLESS_DB_USER} -d ${PAPERLESS_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    networks:
+      - homelab
+
+  paperless-redis:
+    # The same Valkey as Immich's.
+    image: ${PAPERLESS_REDIS_IMAGE}:${PAPERLESS_REDIS_VERSION}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    networks:
+      - homelab
