@@ -77,7 +77,7 @@ both.
 | `newVersionCheck.enabled` | `false` | Releases are followed by the update checker, not by the app |
 | `server.publicUsers` | `false` | The list of users, with their emails, is for the admin only: the work and personal accounts do not see each other |
 | `image.extractEmbedded` | `true` | A RAW's preview comes from the JPEG embedded in it: far less CPU, quality as good as the camera made it |
-| `image.thumbnail`, `image.preview` | WebP, 250 and 1440 px, quality 80 | The lighter steps for the pages; see [Derivatives](#derivatives-through-the-api) |
+| `image.thumbnail`, `image.preview` | WebP, 250 and 1440 px on the short side, quality 80 | The lighter steps for the pages; see [Derivatives](#derivatives-through-the-api) |
 | `ffmpeg.accel`, `ffmpeg.transcode` | `disabled`, `required` | Conversion on the CPU, and only for videos a browser cannot play |
 | `job.*.concurrency` | 2, video 1 | Leaves the CPU to n8n and the ingests |
 | `library.scan`, `library.watch` | every night at 00:00, off | A scan at night, or on demand through the API; no watching the disk |
@@ -146,14 +146,19 @@ api /libraries -d '{"ownerId":"'"$OWNER"'","name":"personal","importPaths":["/li
 
 A file deleted from the folder goes to Immich's trash at the next scan.
 
+Deleting a library (*Administration → External Libraries*, or `DELETE
+/api/libraries/{id}` with `library.delete`) removes its assets from Immich, not
+the files from the disk. The library's own row stays, marked deleted, until the
+nightly cleanup takes it away.
+
 ## Derivatives through the API
 
 What the sites will use, in the light-to-heavy order of the pages:
 
 - `thumbhash`, a field of every asset: a blurred placeholder of a few dozen
   bytes, drawn before anything loads;
-- `GET /api/assets/{id}/thumbnail?size=thumbnail`: WebP, 250 px;
-- `GET /api/assets/{id}/thumbnail?size=preview`: WebP, 1440 px;
+- `GET /api/assets/{id}/thumbnail?size=thumbnail`: WebP, 250 px on the short side;
+- `GET /api/assets/{id}/thumbnail?size=preview`: WebP, 1440 px on the short side;
 - the original, which stays the file in `media/`.
 
 A key with only `asset.read` and `asset.view` reads them, and lists a
@@ -187,6 +192,32 @@ docker compose up -d immich-server             # then the libraries' scan, and t
 `$DB_USER` and `$DB_NAME` are the values of `IMMICH_DB_USER` and
 `IMMICH_DB_NAME`, set by hand: `.env` is never sourced.
 
+## Tested
+
+On 2026-10-17, with v3.3.3 and eight files: two Sony ARW, two Canon CR2, two
+JPEG, two H.264 phone videos, plus an H.265 clip made with the image's own
+ffmpeg.
+
+- **Reach:** HTTPS on the tailnet answered, with a Let's Encrypt certificate;
+  port 2283 refused on the LAN and on the Tailscale address. The phone app on
+  mobile data worked with Tailscale on and reached nothing with it off.
+- **Setup:** with `IMMICH_ALLOW_SETUP=false`, a sign-up gets `400 Admin setup
+  is not available`; the web UI shows the settings as set by a file.
+- **Libraries:** the genome's counted 4 photos, its `sorgenti/` left out; the
+  personal one 1 photo and 2 videos, `**/sorgenti/**` excluded. Each account
+  saw only its own.
+- **Derivatives:** every asset had a `thumbhash`; with a key holding only
+  `asset.read` and `asset.view`, an ARW gave a 250 × 374 thumbnail and a
+  1440 × 2156 preview, both WebP, and the libraries answered 403.
+- **Files:** thumbnails on the SSD, none on the array; only the H.265 clip
+  converted, and it played in the browser.
+- **Backup:** `work` held the genome's four files and not its `sorgenti/`;
+  `personal` held its media and its `sorgenti/`; the restore drill restored
+  `personal` whole. The database dump, restored into an empty instance of the
+  same image, gave the same seven assets and the `vchord` and `vector`
+  extensions.
+- **Memory**, after the import: server 750 MiB, database 237 MiB, Valkey 6 MiB.
+
 ## Updating
 
 `immich-server` and `immich-db` follow upstream's `docker-compose.yml` for the
@@ -199,9 +230,18 @@ and afterwards read the log for `Unknown keys found` and `Invalid system config`
 
 | Service | Limit |
 |---------|-------|
-| `immich-server` | 2560 MiB |
+| `immich-server` | 3584 MiB |
 | `immich-db` | 2 GiB |
 | `immich-redis` | 256 MiB |
 
-Without machine learning, about 5 GiB at most, against 12 GiB available with
+Without machine learning, about 6 GiB at most, against 12 GiB available with
 everything else running and a model loaded in Ollama.
+
+The server's limit comes from the first big import, on 2026-10-18: 13,113
+assets, 112 GB read from disk, thumbnails, previews and video conversion on the
+CPU, about five cores busy for some hours. With 2.5 GiB the server touched its
+limit tens of thousands of times in the first hour (`max` in the container's
+`/sys/fs/cgroup/memory.events`), never ran out (`oom_kill 0`); most of that
+memory is the page cache of the files read, which the kernel gives back. With
+3.5 GiB, the same: no restart, `oom_kill 0`. At rest afterwards: server
+2.1 GiB, database 300 MiB, Valkey 13 MiB.

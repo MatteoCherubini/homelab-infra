@@ -43,10 +43,13 @@ services:
         condition: service_healthy
       immich-redis:
         condition: service_healthy
+    # 3.5 GiB, measured on the first big import (13,113 assets, 112 GB read):
+    # with 2.5 the server pressed against the limit all the time, mostly page
+    # cache of the files read; it never ran out. A ceiling, not a reservation.
     deploy:
       resources:
         limits:
-          memory: 2560m
+          memory: 3584m
     networks:
       - homelab
 
