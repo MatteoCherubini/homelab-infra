@@ -1,6 +1,6 @@
 # Architecture
 
-A single Ubuntu Server host running sixteen services in seven stacks, run as
+A single Ubuntu Server host running nineteen services in eight stacks, run as
 two Docker Compose projects, plus a UPS subsystem that deliberately runs on the host rather than in
 a container.
 
@@ -22,6 +22,7 @@ include:
   - stacks/tools/compose.yml
   - stacks/security/compose.yml
   - stacks/photos/compose.yml
+  - stacks/documents/compose.yml
 ```
 
 Disabling a stack is commenting out one line. Stacks are grouped by
@@ -37,6 +38,7 @@ the others.
 | `security` | vaultwarden | [security](stacks/security.md) |
 | `tools` | excalidraw | [tools](stacks/tools.md) |
 | `photos` | immich-server, immich-db, immich-redis | [photos](stacks/photos.md) |
+| `documents` | paperless, paperless-db, paperless-redis | [documents](stacks/documents.md) |
 
 Because the network is declared at the root and inherited through the merge,
 included files must not redeclare it.
@@ -129,12 +131,13 @@ the LAN at all.
 
 | Path | Holds |
 |------|-------|
-| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models, Immich's thumbnails |
+| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models, Immich's thumbnails, Paperless's search index |
 | `${MEDIA_ROOT}` | Forgejo repositories, on the RAID array |
 | `${MEDIA_ROOT}/backup/dumps` | Consistent database copies, refreshed before every off-site backup |
-| `${MEDIA_ROOT}/archive` | Documents kept ten years — contracts, invoices, filings — backed up as a set of their own |
+| `${MEDIA_ROOT}/archive` | Documents kept ten years — contracts, invoices, filings, and Paperless's export — backed up as a set of their own |
 | `${MEDIA_ROOT}/host-configs` | The firewall's, the hypervisor's and the guests' configuration, copied from the laptop — see [backup](backup.md#other-machines) |
 | `${MEDIA_ROOT}/immich` | Immich's own files: the phone app's uploads, profile pictures, converted videos — see [photos](stacks/photos.md#folders) |
+| `${MEDIA_ROOT}/paperless` | Paperless's originals and its consumption folder; its export lives in `archive/paperless` — see [documents](stacks/documents.md#folders) |
 | `${GENOME_MEDIA_ROOT}` | One folder per genome, `media/` catalogued by Immich read-only, `sorgenti/` (RAW) and `inbox/` beside it |
 | `${PHOTO_PERSONAL_ROOT}` | One folder per personal project, the same shape; backed up as the `personal` set |
 | Off-site (S3) | restic repositories, one per backup set, encrypted on this host — see [backup](backup.md) |

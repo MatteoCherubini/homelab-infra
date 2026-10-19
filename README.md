@@ -3,9 +3,9 @@
 A self-hosted infrastructure stack running on Ubuntu Server, managed entirely
 through Docker Compose and versioned as code.
 
-Sixteen services across seven stacks — reverse proxying, Git hosting, workflow
+Nineteen services across eight stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
-manager, file sync, push notifications and a photo library — plus a UPS subsystem that runs on
+manager, file sync, push notifications, a photo library and a document archive — plus a UPS subsystem that runs on
 the host rather than in a container, because ordered shutdown means halting
 the host itself, and an encrypted off-site backup every night.
 
@@ -37,6 +37,9 @@ does not.
 | Immich              | `photos`     | Photo library and derivatives, tailnet only |
 | PostgreSQL 14       | `photos`     | Immich persistence, with VectorChord        |
 | Valkey 9            | `photos`     | Immich job queue                            |
+| Paperless-ngx       | `documents`  | Document archive with OCR, tailnet only     |
+| PostgreSQL 18       | `documents`  | Paperless persistence                       |
+| Valkey 9            | `documents`  | Paperless task queue                        |
 
 ---
 
@@ -87,7 +90,8 @@ Detail lives in [`docs/`](docs/README.md).
 [git](docs/stacks/git.md) ·
 [security](docs/stacks/security.md) ·
 [tools](docs/stacks/tools.md) ·
-[photos](docs/stacks/photos.md)
+[photos](docs/stacks/photos.md) ·
+[documents](docs/stacks/documents.md)
 
 **Host-level**
 
