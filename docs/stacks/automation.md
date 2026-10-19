@@ -154,11 +154,14 @@ every caller refuses anything blocked.
 - **`ensure-off` never suspends by itself.** It stops the AI node, waits for it
   to stop (or answers `blocked`, leaving the hypervisor on), then asks the
   hypervisor's arbiter for `standby-if-idle`. The arbiter refuses while any
-  guest is not stopped, or while the hypervisor runs a task of its own — a
+  guest is not stopped, while the hypervisor runs a task of its own — a
   backup that started when it woke, a guest shutting down, a console open in
-  its web interface. So a desktop guest in use, or a weekly backup, keeps the
-  hypervisor on: `status: ok`, `hypervisor: on`, with the arbiter's answer
-  (`skip:<ids>` or `skip:task:<types>`) in `note`.
+  its web interface — or while someone has a terminal open on it, an SSH shell
+  or a tmux left running. So a desktop guest in use, a weekly backup or an
+  upgrade over SSH keeps the hypervisor on: `status: ok`, `hypervisor: on`,
+  with the arbiter's answer (`skip:<ids>`, `skip:task:<types>` or
+  `skip:terminals:<n>`) in `note`. A forgotten shell keeps it on too, until it
+  is closed.
 
 ## Syncthing
 

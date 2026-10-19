@@ -46,6 +46,9 @@ SYNCTHING_GUI_PORT=$(env_get SYNCTHING_GUI_PORT 8384)
 IMMICH_PORT=$(env_get IMMICH_PORT 2283)
 IMMICH_DB_USER=$(env_get IMMICH_DB_USER immich)
 IMMICH_DB_NAME=$(env_get IMMICH_DB_NAME immich)
+PAPERLESS_PORT=$(env_get PAPERLESS_PORT 8010)
+PAPERLESS_DB_USER=$(env_get PAPERLESS_DB_USER paperless)
+PAPERLESS_DB_NAME=$(env_get PAPERLESS_DB_NAME paperless)
 N8N_DB_USER=$(env_get N8N_DB_USER n8n)
 N8N_DB_NAME=$(env_get N8N_DB_NAME n8n)
 DATA_ROOT=$(env_get DATA_ROOT ./data)
@@ -105,7 +108,8 @@ state() {
 
 title "Containers"
 for s in nginx homepage cloudflared ntfy forgejo n8n n8n-worker n8n-db n8n-redis \
-         syncthing ollama excalidraw vaultwarden immich-server immich-db immich-redis; do
+         syncthing ollama excalidraw vaultwarden immich-server immich-db immich-redis \
+         paperless paperless-db paperless-redis; do
   want "$s" && state "$s"
 done
 
@@ -121,6 +125,9 @@ want excalidraw  && http "excalidraw"        "http://127.0.0.1:${EXCALIDRAW_PORT
 want vaultwarden && http "vaultwarden"       "http://127.0.0.1:${VAULTWARDEN_PORT}/alive"           200
 want syncthing   && http "syncthing"         "http://127.0.0.1:${SYNCTHING_GUI_PORT}/rest/noauth/health" 200 '"status": *"OK"'
 want immich-server && http "immich"         "http://127.0.0.1:${IMMICH_PORT}/api/server/ping"      200 '"res": *"pong"'
+# localhost, not 127.0.0.1: once PAPERLESS_URL is set, Django answers 400 to
+# any other host, and localhost is the one it always allows.
+want paperless   && http "paperless"         "http://localhost:${PAPERLESS_PORT}/accounts/login/"   200 'csrfmiddlewaretoken'
 
 title "Persistence"
 if want n8n-db; then
@@ -142,6 +149,16 @@ if want immich-redis; then
   if [ "$(docker compose exec -T immich-redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]; then
     ok "immich valkey responding"
   else bad "immich valkey responding"; fi
+fi
+if want paperless-db; then
+  if docker compose exec -T paperless-db pg_isready -U "${PAPERLESS_DB_USER}" -d "${PAPERLESS_DB_NAME}" >/dev/null 2>&1; then
+    ok "paperless postgres accepting connections"
+  else bad "paperless postgres accepting connections"; fi
+fi
+if want paperless-redis; then
+  if [ "$(docker compose exec -T paperless-redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]; then
+    ok "paperless valkey responding"
+  else bad "paperless valkey responding"; fi
 fi
 
 # These numbers are not a health check but a fingerprint: comparing them
