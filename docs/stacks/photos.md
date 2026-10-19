@@ -230,9 +230,18 @@ and afterwards read the log for `Unknown keys found` and `Invalid system config`
 
 | Service | Limit |
 |---------|-------|
-| `immich-server` | 2560 MiB |
+| `immich-server` | 3584 MiB |
 | `immich-db` | 2 GiB |
 | `immich-redis` | 256 MiB |
 
-Without machine learning, about 5 GiB at most, against 12 GiB available with
+Without machine learning, about 6 GiB at most, against 12 GiB available with
 everything else running and a model loaded in Ollama.
+
+The server's limit comes from the first big import, on 2026-10-18: 13,113
+assets, 112 GB read from disk, thumbnails, previews and video conversion on the
+CPU, about five cores busy for some hours. With 2.5 GiB the server touched its
+limit tens of thousands of times in the first hour (`max` in the container's
+`/sys/fs/cgroup/memory.events`), never ran out (`oom_kill 0`); most of that
+memory is the page cache of the files read, which the kernel gives back. With
+3.5 GiB, the same: no restart, `oom_kill 0`. At rest afterwards: server
+2.1 GiB, database 300 MiB, Valkey 13 MiB.
