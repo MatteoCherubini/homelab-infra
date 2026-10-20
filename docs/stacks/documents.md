@@ -154,6 +154,39 @@ docker compose exec -T paperless document_create_classifier
 `$DB_USER` and `$DB_NAME` are the values of `PAPERLESS_DB_USER` and
 `PAPERLESS_DB_NAME`, set by hand: `.env` is never sourced.
 
+## Tested
+
+On 2026-10-19 and 20, with 3.3.2:
+
+- **Reach:** the tailnet address answered 200; port 8010 was refused on the LAN
+  and on the Tailscale address.
+- **OCR and names:** a phone photo of a printed Italian page was found by a word
+  that was only in the photo. On disk the files followed the format,
+  `2026/Prova/Prova/<title>.jpg`; a document with no type and no correspondent
+  went to `2026/<title>.pdf`, with no `none/` in its path.
+- **Users:** a second account with the same permissions saw none of the other
+  account's documents, and a direct link answered 404 — except one document,
+  which had come in through the consumption folder with no owner. Hence the
+  workflow in [Users](#users); with it, every document has an owner.
+- **Export and import:** the export, imported into an empty Paperless (SQLite,
+  a Valkey of its own, a copy of the export), gave back the same 4 documents
+  with the same checksums, the originals under the same paths. A throwaway
+  Paperless needs a `PAPERLESS_SECRET_KEY` of its own: 3.x refuses to start
+  without one. Its SQLite database is in WAL mode, so it opens only from a
+  writable folder.
+- **Backup:** the first night dumped `paperless-db` and exported;
+  `make backup-restore-test` opened the dump and the export's manifest. That
+  export held no documents yet, as they were added the morning after.
+- **Failures:** Paperless stopped: its two lines red, the other 47 green. Its
+  database stopped: three lines red, Paperless's page answering 500; when the
+  database came back, Paperless reconnected by itself.
+- **Memory:** at rest, 459 MiB of the processes' own memory (`anon` in the
+  container's `memory.stat`), 625 MiB counting cache. During the OCR of a
+  six-page PDF made of photos, 596 MiB at most. The container's counter touched
+  the 2 GiB limit only at the first start, compiling Python and building the
+  index — page cache the kernel gave back — and nothing was ever killed
+  (`oom_kill 0`).
+
 ## AI, later
 
 Not in this version. When it comes, after some weeks of real documents have
@@ -187,5 +220,6 @@ version the data needs nothing. Seen on 2026-10-19, at Paperless's first pull.
 | `paperless-db` | 512 MiB |
 | `paperless-redis` | 128 MiB |
 
-Ceilings, not reservations, to be confirmed against the peak measured during
-the OCR of a scan of several pages.
+Ceilings, not reservations. Measured in [Tested](#tested): the OCR of six
+pages stays under 600 MiB of the processes' own memory, so 2 GiB leaves room
+for a long scan and for the page cache.
