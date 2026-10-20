@@ -80,6 +80,16 @@ tag comes off with a click, a permission protects. Personal documents are
 owned by their person and shared with no one. Collaborators, when they come,
 join a `work` group, and only work documents are shared with it.
 
+**A document with no owner is visible to every user.** Paperless keeps that
+rule for compatibility, and a file uploaded in the web UI belongs to whoever
+uploads it — but one that comes in through the consumption folder has no owner.
+Found on 2026-10-20, when a test account saw exactly the one document that had
+come in that way. A workflow closes it: trigger *Consumption Started*, source
+*Consume folder*, action *Assignment*, owner the account that files the
+documents. Mail, when it comes, sets its owner in each mail rule. The workflow
+lives in the database, so the dump and the export carry it; the vocabulary
+script creates it on a new server.
+
 ## Vocabulary
 
 A closed vocabulary, written before any automation: every document gets one
