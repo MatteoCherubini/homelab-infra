@@ -107,6 +107,12 @@ The vocabulary is configuration: a script will create it through the API, so a
 new server gets the same one. Until then it is typed in the web UI, and the
 script takes over what exists without duplicating it.
 
+**A type's or a correspondent's name becomes a folder name** — on the array,
+in the export, and on any disk the export is copied to. So no character
+Windows refuses (`< > : " / \ | ? *`) and no trailing dot, which Windows drops:
+`Acme Srl`, not `Acme S.r.l.`. Paperless itself turns a `|` into `-`, silently.
+Renaming one moves its documents' files, a little later.
+
 ## Backup and restore
 
 Two copies, for two different losses:
