@@ -3,9 +3,10 @@
 A self-hosted infrastructure stack running on Ubuntu Server, managed entirely
 through Docker Compose and versioned as code.
 
-Nineteen services across eight stacks — reverse proxying, Git hosting, workflow
+Twenty services across nine stacks — reverse proxying, Git hosting, workflow
 automation with a queue-mode worker, a local LLM runtime on GPU, a password
-manager, file sync, push notifications, a photo library and a document archive — plus a UPS subsystem that runs on
+manager, file sync, push notifications, a photo library, a document archive
+and tables for the numbers — plus a UPS subsystem that runs on
 the host rather than in a container, because ordered shutdown means halting
 the host itself, and an encrypted off-site backup every night.
 
@@ -153,6 +154,14 @@ Docker and no `.env`, so it works on a fresh clone and in CI. `make healthcheck`
 runs against the live system, asserts on response bodies rather than status
 codes, and prints a fingerprint of the n8n database to compare on both sides of
 an upgrade.
+
+**Nothing comes in, and nothing is published under the tailnet's name.** Every
+way in is a connection the server opens: a Cloudflare tunnel, or `tailscale
+serve` for the tailnet only. **`tailscale funnel` is never used, on any machine
+of the tailnet:** Grist trusts every page of the tailnet's domain as its own,
+so a public page there could act for whoever opens it. `make healthcheck` turns
+red if this server publishes a port through Funnel, or if the tailnet's policy
+allows it. See [business](docs/stacks/business.md#what-the-devices-identity-means).
 
 **Compose rather than Kubernetes.** The workload is a single host with a GPU.
 Kubernetes would add an orchestration layer whose failure modes are harder to
