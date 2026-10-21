@@ -73,8 +73,8 @@ echo "🔑 Fixing permissions..."
 PUID=$(env_get PUID 1000)
 PGID=$(env_get PGID 1000)
 
-# n8n runs as the UID from .env (default 1000)
-chown -R "$PUID:$PGID" "$DATA/n8n/data" 2>/dev/null || true
+# n8n and Grist run as the UID from .env (default 1000)
+chown -R "$PUID:$PGID" "$DATA/n8n/data" "$DATA/grist" 2>/dev/null || true
 
 echo "✅ Permissions applied"
 
