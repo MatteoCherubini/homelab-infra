@@ -49,6 +49,7 @@ IMMICH_DB_NAME=$(env_get IMMICH_DB_NAME immich)
 PAPERLESS_PORT=$(env_get PAPERLESS_PORT 8010)
 PAPERLESS_DB_USER=$(env_get PAPERLESS_DB_USER paperless)
 PAPERLESS_DB_NAME=$(env_get PAPERLESS_DB_NAME paperless)
+GRIST_PORT=$(env_get GRIST_PORT 8484)
 N8N_DB_USER=$(env_get N8N_DB_USER n8n)
 N8N_DB_NAME=$(env_get N8N_DB_NAME n8n)
 DATA_ROOT=$(env_get DATA_ROOT ./data)
@@ -109,7 +110,7 @@ state() {
 title "Containers"
 for s in nginx homepage cloudflared ntfy forgejo n8n n8n-worker n8n-db n8n-redis \
          syncthing ollama excalidraw vaultwarden immich-server immich-db immich-redis \
-         paperless paperless-db paperless-redis; do
+         paperless paperless-db paperless-redis grist; do
   want "$s" && state "$s"
 done
 
@@ -128,6 +129,8 @@ want immich-server && http "immich"         "http://127.0.0.1:${IMMICH_PORT}/api
 # localhost, not 127.0.0.1: once PAPERLESS_URL is set, Django answers 400 to
 # any other host, and localhost is the one it always allows.
 want paperless   && http "paperless"         "http://localhost:${PAPERLESS_PORT}/accounts/login/"   200 'csrfmiddlewaretoken'
+# db=1 asks Grist to query its own database; ready=1, that it finished starting.
+want grist       && http "grist"             "http://127.0.0.1:${GRIST_PORT}/status?db=1&ready=1"    200 'db ok, ready ok'
 
 title "Persistence"
 if want n8n-db; then
