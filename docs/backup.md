@@ -41,7 +41,10 @@ replaced by consistent copies: Postgres through `pg_dump -Fc`, SQLite through
 `sqlite3 .backup`, which takes the proper locks while the service keeps
 running. Each copy is integrity-checked before it replaces the previous one,
 and runs as the owner of the database file: it never leaves a root-owned file
-behind in a service's data.
+behind in a service's data. A service that names its files itself — Grist,
+one file per document — gets a line with a `*` in `backup/sqlite.list`: each
+file is copied on its own, and the copy of a file that is gone is removed, so
+a deleted document leaves the next snapshot.
 
 **No sudo.** Everything root-owned is read inside a throwaway container — even
 the check that a listed path exists — so the same command sees the same files
@@ -63,7 +66,7 @@ a client's data leaves the backups.
 
 | Set | `.env` keys | Holds | History |
 |-----|-------------|-------|---------|
-| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies (Immich's too), Forgejo, the genome vaults, the genomes' media without their RAW, Immich's profile pictures, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
+| `work` | `BACKUP_WORK_REPOSITORY`, `BACKUP_WORK_PASSWORD` | Database copies (Immich's and Grist's too), Forgejo, the genome vaults, the genomes' media without their RAW, Immich's profile pictures, Vaultwarden, NPM and certificates, ntfy, n8n's files, Homepage, Syncthing's configuration, `.env`; the host's own configuration — fstab, RAID, network, SSH, NUT, the Compose unit; the [other machines'](#other-machines) configuration | About three months |
 | `archive` | `BACKUP_ARCHIVE_REPOSITORY`, `BACKUP_ARCHIVE_PASSWORD` | `${MEDIA_ROOT}/archive`: signed contracts, invoices, receipts, filings; Paperless's export, every document's original under a readable name with its manifest | Ten years |
 | `personal` | `BACKUP_PERSONAL_REPOSITORY`, `BACKUP_PERSONAL_PASSWORD` | `${PHOTO_PERSONAL_ROOT}`: the photographs chosen to keep, edited and RAW, one folder per project; the few uploads from Immich's phone app | Ten years |
 
@@ -284,7 +287,7 @@ The JSON report on stdout is the contract with the workflow:
 ```json
 {"run_at": "…", "status": "ok|error", "host": "<server>",
  "sets": [{"name": "work", "status": "ok", "snapshot": "…", "data_added": 0, "duration_s": 0}],
- "dumps": ["n8n-db.dump", "vaultwarden.sqlite3"], "errors": []}
+ "dumps": ["n8n-db.dump", "vaultwarden.sqlite3", "grist-doc-* (3 files)"], "errors": []}
 ```
 
 A failed dump does not stop the run: the previous copy and every other path
