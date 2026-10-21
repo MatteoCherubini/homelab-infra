@@ -56,6 +56,22 @@ Grist trusts whatever the header says, so **nothing may reach the port except
 *Sign out* in the menu leads back to the home page, still signed in: the
 identity is the device's, not a session's.
 
+### What the device's identity means
+
+- **Anything running on one of your devices is you in Grist**: the browser,
+  a script, an extension, the phone. There is no password to type, so there
+  is none to steal either; the device is the key.
+- **A page from the internet cannot act for you.** The header reaches every
+  request from your browser, a cross-site one too — so Grist accepts a change
+  sent this way only with `Content-Type: application/json` or
+  `X-Requested-With`, which a foreign page can send only after asking the
+  browser's permission (CORS), and Grist grants that, and opens its
+  websockets, only to pages of its own domain.
+- **Its own domain is the whole tailnet**: `*.<tailnet>.ts.net`, any port —
+  Immich and Paperless included. A flaw in one of them could reach Grist,
+  and **no machine of this tailnet may ever run `tailscale funnel`**: a public
+  page there would be a page Grist trusts.
+
 ### Logins that are not emails
 
 On a tailnet signed in with GitHub the login is `<user>@github`, not an email
