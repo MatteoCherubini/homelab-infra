@@ -2,7 +2,14 @@
 # then checked with `pragma integrity_check`. The services keep running.
 # <name>  <path, placeholders as in work.paths>
 # The copy lands in ${MEDIA_ROOT}/backup/dumps/<name>.sqlite3. docs/backup.md
+#
+# A `*` in the file name copies every file it matches, each to
+# <name>-<file name without extension>.sqlite3; none matching is not an error.
+# Such a line owns every <name>-*.sqlite3 in the dumps: the copy of a file
+# that is gone is removed, so no other name may start with <name>-.
 vaultwarden  ${DATA_ROOT}/vaultwarden/data/db.sqlite3
 forgejo      ${MEDIA_ROOT}/forgejo/data/gitea/gitea.db
 npm          ${DATA_ROOT}/nginx/data/database.sqlite
 ntfy-auth    ${DATA_ROOT}/ntfy/data/auth.db
+grist-home   ${DATA_ROOT}/grist/home.sqlite3
+grist-doc    ${DATA_ROOT}/grist/docs/*.grist

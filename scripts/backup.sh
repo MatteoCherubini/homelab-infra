@@ -166,27 +166,75 @@ dump_sqlite() {
   for line in "${lines[@]}"; do
     read -r name path <<<"$line"
     path=$(expand "$path")
-    log "sqlite .backup $name"
-    # The directory is mounted read-write on purpose: a WAL database cannot be
-    # opened without its -shm file. sqlite3 takes the proper locks, so the
-    # service keeps running while the copy is made.
-    # The copy runs as the owner of the file. With the service stopped,
-    # sqlite3 creates -wal and -shm itself; a root-owned pair left behind by an
-    # interrupted copy would lock the service out of its own database.
-    if docker run --rm --mount "type=bind,src=$(dirname "$path"),dst=/db" \
-        --mount "type=bind,src=$DUMP_DIR,dst=/out" "$TOOLS_IMG" sh -c '
-          apk add --no-cache sqlite su-exec >/dev/null || exit 2
-          # Without this, sqlite3 would create an empty database and back it up.
-          [ -f "/db/$1" ] || { echo "missing: $1" >&2; exit 3; }
-          su-exec "$(stat -c %u:%g "/db/$1")" sqlite3 "/db/$1" ".backup /tmp/copy" || exit 1
-          [ "$(sqlite3 /tmp/copy "pragma integrity_check")" = ok ] || exit 1
-          cp /tmp/copy "/out/$2.sqlite3.part" && mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' \
-        sh "$(basename "$path")" "$name"; then
-      DUMPED+=("$name.sqlite3")
-    else
-      fail "SQLite copy of $name failed ($path)"
-    fi
+    case $(basename "$path") in
+      *'*'*) dump_sqlite_matching "$name" "$path" ;;
+      *)     if dump_sqlite_file "$name" "$path"; then DUMPED+=("$name.sqlite3"); fi ;;
+    esac
   done
+}
+
+# dump_sqlite_file <name> <path> — one database, copied to <name>.sqlite3.
+dump_sqlite_file() {
+  local name=$1 path=$2
+  log "sqlite .backup $name"
+  # The directory is mounted read-write on purpose: a WAL database cannot be
+  # opened without its -shm file. sqlite3 takes the proper locks, so the
+  # service keeps running while the copy is made.
+  # The copy runs as the owner of the file. With the service stopped,
+  # sqlite3 creates -wal and -shm itself; a root-owned pair left behind by an
+  # interrupted copy would lock the service out of its own database.
+  if docker run --rm --mount "type=bind,src=$(dirname "$path"),dst=/db" \
+      --mount "type=bind,src=$DUMP_DIR,dst=/out" "$TOOLS_IMG" sh -c '
+        apk add --no-cache sqlite su-exec >/dev/null || exit 2
+        # Without this, sqlite3 would create an empty database and back it up.
+        [ -f "/db/$1" ] || { echo "missing: $1" >&2; exit 3; }
+        su-exec "$(stat -c %u:%g "/db/$1")" sqlite3 "/db/$1" ".backup /tmp/copy" || exit 1
+        [ "$(sqlite3 /tmp/copy "pragma integrity_check")" = ok ] || exit 1
+        cp /tmp/copy "/out/$2.sqlite3.part" && mv "/out/$2.sqlite3.part" "/out/$2.sqlite3"' \
+      sh "$(basename "$path")" "$name"; then
+    return 0
+  fi
+  fail "SQLite copy of $name failed ($path)"
+  return 1
+}
+
+# A line with a `*`, for a service that names its files itself — Grist, one
+# file per document. The files are listed as root inside a container, as
+# present_paths does, and each is copied on its own. Then the copies of files
+# that are gone are removed: only after a listing that worked, or a failed
+# listing would empty the dumps. The report counts the copies instead of
+# naming them, so the notification stays readable.
+dump_sqlite_matching() {
+  local name=$1 path=$2 dir pattern listing f files=() keep=() n=0
+  dir=$(dirname "$path"); pattern=$(basename "$path")
+  # The pattern is expanded by a shell below: it may only glob.
+  if [[ ! $pattern =~ ^[A-Za-z0-9._*-]+$ ]] || [[ $dir == *'*'* ]]; then
+    fail "backup/sqlite.list: a * only in the file name, with letters, digits and . _ - ($path)"
+    return
+  fi
+  if ! listing=$(docker run --rm --mount "type=bind,src=$dir,dst=/db,readonly" "$TOOLS_IMG" \
+      sh -c 'cd /db || exit 1; for f in $1; do [ -f "$f" ] && printf "%s\n" "$f"; done; exit 0' \
+      sh "$pattern"); then
+    fail "SQLite copy of $name failed: cannot list $dir"
+    return
+  fi
+  mapfile -t files < <(printf '%s' "$listing" | sed '/^$/d')
+  [ ${#files[@]} -gt 0 ] || log "sqlite $name: no file matches $path"
+  for f in "${files[@]}"; do
+    # A copy that failed keeps its name: the previous one still goes off-site.
+    keep+=("$name-${f%.*}.sqlite3")
+    if dump_sqlite_file "$name-${f%.*}" "$dir/$f"; then n=$((n + 1)); fi
+  done
+  docker run --rm --mount "type=bind,src=$DUMP_DIR,dst=/out" "$TOOLS_IMG" sh -c '
+    prefix=$1; shift
+    for f in /out/"$prefix"-*.sqlite3; do
+      [ -e "$f" ] || continue
+      b=$(basename "$f"); k=0
+      for want; do [ "$want" = "$b" ] && k=1; done
+      [ "$k" = 1 ] || { rm -f "$f" && echo "removed the copy of a file that is gone: $b" >&2; }
+    done' sh "$name" "${keep[@]}" \
+    || fail "SQLite $name: cannot remove the copies of files that are gone"
+  DUMPED+=("$name-* ($n files)")
 }
 
 # ── Paperless's own export ────────────────────────────────────
