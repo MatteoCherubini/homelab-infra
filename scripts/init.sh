@@ -53,6 +53,8 @@ dirs=(
     "$DATA/immich/postgres" "$DATA/immich/thumbs"
     # Documents: the database, the search index and the classifier on the SSD
     "$DATA/paperless/postgres" "$DATA/paperless/data"
+    # Business: Grist's users and documents, SQLite files on the SSD
+    "$DATA/grist"
     # Media (RAID)
     "$MEDIA/forgejo/data"
     "$MEDIA/immich" "$GENOME_MEDIA" "$PERSONAL"
