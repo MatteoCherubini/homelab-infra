@@ -29,8 +29,10 @@ sudo tailscale serve --bg --https=10000 8484   # 8484 is GRIST_PORT
 tailscale serve status                         # → https://<server>.<tailnet>.ts.net:10000 (tailnet only) → http://127.0.0.1:8484
 ```
 
-`GRIST_URL` in `.env` is that address, port included. **No `tailscale
-funnel`, and no public form** until [Access](#later) arrives.
+`GRIST_URL` in `.env` is that address, port included. No public form until
+[Access](#later) arrives, and **no `tailscale funnel` on any machine of the
+tailnet, ever** — [why](#what-the-devices-identity-means); `make healthcheck`
+checks it.
 
 ### Who you are: a header Grist believes
 
