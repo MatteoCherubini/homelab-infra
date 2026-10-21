@@ -1,6 +1,6 @@
 # Architecture
 
-A single Ubuntu Server host running nineteen services in eight stacks, run as
+A single Ubuntu Server host running twenty services in nine stacks, run as
 two Docker Compose projects, plus a UPS subsystem that deliberately runs on the host rather than in
 a container.
 
@@ -23,6 +23,7 @@ include:
   - stacks/security/compose.yml
   - stacks/photos/compose.yml
   - stacks/documents/compose.yml
+  - stacks/business/compose.yml
 ```
 
 Disabling a stack is commenting out one line. Stacks are grouped by
@@ -39,6 +40,7 @@ the others.
 | `tools` | excalidraw | [tools](stacks/tools.md) |
 | `photos` | immich-server, immich-db, immich-redis | [photos](stacks/photos.md) |
 | `documents` | paperless, paperless-db, paperless-redis | [documents](stacks/documents.md) |
+| `business` | grist | [business](stacks/business.md) |
 
 Because the network is declared at the root and inherited through the merge,
 included files must not redeclare it.
@@ -55,6 +57,11 @@ stable). A broken NVIDIA driver then stops Ollama and nothing else. See
 
 Every service sits on one Docker bridge network, `homelab`, and addresses the
 others by service name. The subnet comes from `HOMELAB_SUBNET`.
+
+**Grist is the exception:** it believes the identity header on every request,
+so it sits on a network of its own, `business`, that only it joins — any
+container on `homelab` could otherwise send the header. See
+[business](stacks/business.md#who-you-are-a-header-grist-believes).
 
 Internal calls use container addresses and internal ports, never public
 hostnames: n8n reaches Forgejo at `http://forgejo:3000`, not through the proxy.
@@ -131,7 +138,7 @@ the LAN at all.
 
 | Path | Holds |
 |------|-------|
-| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models, Immich's thumbnails, Paperless's search index |
+| `${DATA_ROOT}` | Per-service state: databases, configuration, Ollama models, Immich's thumbnails, Paperless's search index, Grist's documents |
 | `${MEDIA_ROOT}` | Forgejo repositories, on the RAID array |
 | `${MEDIA_ROOT}/backup/dumps` | Consistent database copies, refreshed before every off-site backup |
 | `${MEDIA_ROOT}/archive` | Documents kept ten years — contracts, invoices, filings, and Paperless's export — backed up as a set of their own |

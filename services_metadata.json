@@ -18,6 +18,12 @@
     "github_repo_name": "forgejo",
     "github_repo_url": "https://codeberg.org/forgejo/forgejo"
   },
+  "grist": {
+    "repo": "gristlabs/grist-core",
+    "criticality": "medium",
+    "stack": "business",
+    "display_name": "Grist"
+  },
   "homepage": {
     "repo": "gethomepage/homepage",
     "criticality": "low",

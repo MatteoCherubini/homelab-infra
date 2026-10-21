@@ -1,0 +1,69 @@
+# ── BUSINESS: Grist, the numbers and their states — never the papers ──
+# docs/stacks/business.md
+#
+# One container. The users, the sites and the list of documents are one
+# SQLite file, and each document is another: a single server needs neither
+# Postgres nor Redis.
+#
+# Who you are comes from a header that `tailscale serve` writes on the host,
+# and Grist believes it on every request. So nothing may reach Grist except
+# through that: the port is published on 127.0.0.1, never on the LAN, and the
+# service sits on a network of its own that no other container joins — on the
+# shared network any container could send the header itself.
+
+services:
+  grist:
+    image: ${GRIST_IMAGE}:${GRIST_VERSION}
+    restart: unless-stopped
+    environment:
+      # The tailnet address, port included: links, redirects and the API.
+      APP_HOME_URL: ${GRIST_URL}
+      # Straight into service: no Quick setup and no boot key in the log.
+      # What Quick setup would ask is set here.
+      GRIST_IN_SERVICE: "true"
+      # The identity, read on every request, never from a session. On a
+      # tailnet signed in with GitHub the login is `<user>@github`, not an
+      # email: Grist takes it as it is.
+      GRIST_FORWARD_AUTH_HEADER: Tailscale-User-Login
+      GRIST_IGNORE_SESSION: "true"
+      GRIST_FORCE_LOGIN: "true"
+      # The installation admin, by the same login. Not GRIST_DEFAULT_EMAIL,
+      # which would also sign in as that user whoever comes without a header.
+      GRIST_ADMIN_EMAIL: ${GRIST_ADMIN_LOGIN}
+      # Only the admin creates team sites. Each user still gets a personal
+      # site, which nobody else can join: the personal sheets live there.
+      GRIST_ORG_CREATION_ANYONE: "false"
+      GRIST_PERSONAL_ORGS: "true"
+      # Every new site on the plan with no limits. Without it a personal site
+      # gets the hosted service's free plan — 5,000 rows a document, then
+      # delete-only — and a team site a stub waiting for a subscription. A
+      # site keeps the plan it was created with: this must be set before the
+      # first sign-in.
+      GRIST_DEFAULT_PRODUCT: Free
+      # Formulas are Python, and run in gVisor. If gVisor cannot start, Grist
+      # does not start either: never unsandboxed without anyone noticing.
+      GRIST_SANDBOX_FLAVOR: gvisor
+      GRIST_SESSION_SECRET: ${GRIST_SESSION_SECRET}
+      GRIST_TELEMETRY_LEVEL: "off"
+      # The release checker follows Grist, as every other service.
+      GRIST_ALLOW_AUTOMATIC_VERSION_CHECKING: "false"
+      TZ: ${TZ}
+    ports:
+      - "127.0.0.1:${GRIST_PORT:-8484}:8484"
+    volumes:
+      # home.sqlite3 and docs/<id>.grist, one SQLite file per document: on
+      # the SSD. Copied online before every backup (backup/sqlite.list).
+      - ${DATA_ROOT}/grist:/persist
+    # A ceiling, not a reservation: Node, and one Python sandbox per open
+    # document.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    networks:
+      - business
+
+networks:
+  # Grist's alone. n8n joins it on purpose, for the API, when a flow needs it.
+  business:
+    driver: bridge
