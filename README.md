@@ -40,6 +40,7 @@ does not.
 | Paperless-ngx       | `documents`  | Document archive with OCR, tailnet only     |
 | PostgreSQL 18       | `documents`  | Paperless persistence                       |
 | Valkey 9            | `documents`  | Paperless task queue                        |
+| Grist               | `business`   | Tables for the numbers, tailnet only        |
 
 ---
 
