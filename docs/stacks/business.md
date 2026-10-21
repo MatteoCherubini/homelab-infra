@@ -75,6 +75,9 @@ and the documents stay with the old one.
   (`GRIST_PERSONAL_ORGS`). The personal sheets — contracts, policies,
   payslips, investments — live there, and are shared with no one. That is a
   rule kept by people, as in Paperless, not a limit of the plan.
+- **Grist keeps four users of its own** — anonymous, preview, everyone,
+  support — and the support user has a personal site too. They are not
+  people, and they sign in nowhere.
 - **Team sites are made by the admin only** (`GRIST_ORG_CREATION_ANYONE`):
   the work goes in one, made when the first work document comes, and it is
   the one collaborators will join.
@@ -85,10 +88,22 @@ and the documents stay with the old one.
 |-----------|------------------|------|--------|
 | `${DATA_ROOT}/grist/home.sqlite3` | `/persist/home.sqlite3` | users, sites, workspaces, the list of documents, API keys | copied into `work` |
 | `${DATA_ROOT}/grist/docs/<id>.grist` | `/persist/docs` | one SQLite file per document, named by the document's id | copied into `work` |
+| `${DATA_ROOT}/grist/grist-sessions.db` | `/persist/grist-sessions.db` | the sessions, which carry no identity here | none |
 
-On the SSD: they are databases. The container starts as root and hands
-`/persist` to the image's own `grist` user before starting Grist, so the files
-on the host belong to that user, not to `PUID`.
+On the SSD: they are databases. Grist runs as `PUID:PGID`, so the files belong
+to the same user as everything else. Started as root — the image's default —
+it would hand `/persist` to its own `grist` user, 1001, and on this server
+1001 is the account n8n runs commands as: seen on 2026-10-21, with 0.9.0. The
+folder must exist and belong to that user before the first start: `make
+init` creates it. gVisor runs unprivileged either way.
+
+From 0.9.0, once, with Grist stopped:
+
+```bash
+docker run --rm -v "$GRIST_DIR:/p" alpine chown -R "$PUID:$PGID" /p
+```
+
+The variables are set by hand, as in [Backup and restore](#backup-and-restore).
 
 ## Settings
 
@@ -158,11 +173,14 @@ docker run --rm -v "$GRIST_DIR:/persist" -v /tmp/restore:/r alpine sh -c '
   cp /r/grist-home.sqlite3 /persist/home.sqlite3
   for f in /r/grist-doc-*.sqlite3; do
     id=${f#/r/grist-doc-}; cp "$f" "/persist/docs/${id%.sqlite3}.grist"
-  done'
+  done
+  chown -R "$1" /persist' sh "$PUID:$PGID"
 docker compose up -d grist
 ```
 
-`$GRIST_DIR` is `${DATA_ROOT}/grist`, set by hand: `.env` is never sourced.
+`$GRIST_DIR` is `${DATA_ROOT}/grist`, `$PUID` and `$PGID` the values in
+`.env`, all set by hand: `.env` is never sourced. The `chown` matters: copied
+as root, the files would be Grist's to read and not to write.
 
 **One document only**, without touching the others: rename its copy to
 `<anything>.grist` and import it in the web UI (*Add New → Import document*).

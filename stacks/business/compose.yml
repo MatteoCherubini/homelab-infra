@@ -15,6 +15,12 @@ services:
   grist:
     image: ${GRIST_IMAGE}:${GRIST_VERSION}
     restart: unless-stopped
+    # The files on the host belong to the same user as everything else.
+    # Started as root, the image would hand /persist to its own `grist` user,
+    # 1001 — on a host, that number may well be another account's. Started
+    # as this user, it changes nothing and runs gVisor unprivileged all the
+    # same. The folder must exist, owned by it: `make init`.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       # The tailnet address, port included: links, redirects and the API.
       APP_HOME_URL: ${GRIST_URL}
