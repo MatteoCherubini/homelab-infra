@@ -203,6 +203,30 @@ if want n8n; then
   fi
 fi
 
+# Funnel puts a port of a tailnet machine on the internet, under the tailnet's
+# own domain — and Grist trusts every page of that domain as its own, so a
+# public one could act for whoever opens it. It is never used, and the
+# tailnet's policy should not even allow it. docs/stacks/business.md
+if want tailnet && command -v tailscale >/dev/null 2>&1; then
+  title "Tailnet"
+  ts=$(tailscale status --json 2>/dev/null)
+  sv=$(tailscale serve status --json 2>/dev/null)
+  sv=${sv:-'{}'}   # no configuration at all: nothing served, nothing public
+  # jq -e: 0 true, 1 false, anything else unreadable — which must not pass.
+  jq -e '[.AllowFunnel // {} | .[]] | any' <<<"$sv" >/dev/null 2>&1; public=$?
+  jq -e '[(.Self.CapMap // {} | keys[]), ((.Self.Capabilities // [])[])] | any(test("funnel"; "i"))' \
+    <<<"${ts:-x}" >/dev/null 2>&1; allowed=$?
+  if [ "$public" -eq 0 ]; then
+    bad "tailscale funnel" "a port is on the internet: tailscale funnel status"
+  elif [ "$allowed" -eq 0 ]; then
+    bad "tailscale funnel" "the tailnet's policy allows it: remove the funnel attribute"
+  elif [ "$public" -ne 1 ] || [ "$allowed" -ne 1 ]; then
+    bad "tailscale funnel" "cannot read tailscale's status"
+  else
+    ok "tailscale funnel" "off, and the tailnet's policy does not allow it"
+  fi
+fi
+
 # A UPS the server cannot read protects nothing, and fails in silence: the
 # driver retries forever and upsmon writes to the journal. After a move the
 # cable stayed unplugged for days while every check here passed. Only where NUT

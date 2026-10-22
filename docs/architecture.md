@@ -121,6 +121,13 @@ itself:
 - **Cloudflare Tunnel** for the public services, over an outbound connection.
 - **Tailscale** for administration, reaching the server only; the other
   machines are reached through it by SSH (`ProxyJump`), with the laptop's keys.
+  The web services it carries — Immich, Paperless, Grist — go through `tailscale
+  serve`, for the tailnet only.
+- **Never `tailscale funnel`, on any machine of the tailnet.** It would put a
+  page on the internet under the tailnet's own domain, and Grist trusts that
+  whole domain: see [business](stacks/business.md#what-the-devices-identity-means).
+  `make healthcheck` checks this server's configuration and the tailnet's
+  policy.
 
 The firewall's WAN is a DHCP client with no inbound rule, which works behind
 any router, carrier-grade NAT included. Its internal subnets must not overlap

@@ -29,8 +29,10 @@ sudo tailscale serve --bg --https=10000 8484   # 8484 is GRIST_PORT
 tailscale serve status                         # → https://<server>.<tailnet>.ts.net:10000 (tailnet only) → http://127.0.0.1:8484
 ```
 
-`GRIST_URL` in `.env` is that address, port included. **No `tailscale
-funnel`, and no public form** until [Access](#later) arrives.
+`GRIST_URL` in `.env` is that address, port included. No public form until
+[Access](#later) arrives, and **no `tailscale funnel` on any machine of the
+tailnet, ever** — [why](#what-the-devices-identity-means); `make healthcheck`
+checks it.
 
 ### Who you are: a header Grist believes
 
@@ -55,6 +57,22 @@ Grist trusts whatever the header says, so **nothing may reach the port except
 
 *Sign out* in the menu leads back to the home page, still signed in: the
 identity is the device's, not a session's.
+
+### What the device's identity means
+
+- **Anything running on one of your devices is you in Grist**: the browser,
+  a script, an extension, the phone. There is no password to type, so there
+  is none to steal either; the device is the key.
+- **A page from the internet cannot act for you.** The header reaches every
+  request from your browser, a cross-site one too — so Grist accepts a change
+  sent this way only with `Content-Type: application/json` or
+  `X-Requested-With`, which a foreign page can send only after asking the
+  browser's permission (CORS), and Grist grants that, and opens its
+  websockets, only to pages of its own domain.
+- **Its own domain is the whole tailnet**: `*.<tailnet>.ts.net`, any port —
+  Immich and Paperless included. A flaw in one of them could reach Grist,
+  and **no machine of this tailnet may ever run `tailscale funnel`**: a public
+  page there would be a page Grist trusts.
 
 ### Logins that are not emails
 
@@ -201,6 +219,30 @@ a week without a fix. The image's tags have no `v`: `1.7.21`.
 
 A ceiling, not a reservation: Node, plus one Python sandbox per open document,
 closed half a minute after its last client leaves.
+
+## Tested
+
+On 2026-10-21 and 22, with 1.7.21:
+
+- **Identity:** the tailnet login came in with no password and was the
+  installation admin; every site was on the `Free` plan. A forged
+  `Tailscale-User-Login` sent from another machine changed nothing:
+  `tailscale serve` throws it away and writes its own.
+- **Reach:** port 8484 answered only on `127.0.0.1`. A container on the shared
+  network reached Grist neither by name, nor by address, nor through the host.
+- **Sandbox:** `gvisor check ok` in the log; a formula listing `/etc` gave
+  `[]`, `/persist` was empty, and there was no network. Run as `PUID:PGID`,
+  the files belong to the host's user and gVisor starts all the same.
+- **Failure:** Grist stopped, only its two lines of the health check red.
+- **Memory:** 282 MiB with a document open.
+- **Backup and restore:** the first night copied `home.sqlite3` and both
+  documents (`grist-doc-* (2 files)`), and `make backup-restore-test` brought
+  them back from off-site with `integrity_check` passing. The same night's
+  copies, put back as in [Backup and restore](#backup-and-restore) into a
+  throwaway Grist — the same image and settings, a temporary folder, another
+  port on `127.0.0.1`, the identity header sent with curl from the host —
+  opened with every table, as many rows as the live documents, and no formula
+  in error.
 
 ## Later
 
