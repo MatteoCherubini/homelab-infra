@@ -220,6 +220,30 @@ a week without a fix. The image's tags have no `v`: `1.7.21`.
 A ceiling, not a reservation: Node, plus one Python sandbox per open document,
 closed half a minute after its last client leaves.
 
+## Tested
+
+On 2026-10-21 and 22, with 1.7.21:
+
+- **Identity:** the tailnet login came in with no password and was the
+  installation admin; every site was on the `Free` plan. A forged
+  `Tailscale-User-Login` sent from another machine changed nothing:
+  `tailscale serve` throws it away and writes its own.
+- **Reach:** port 8484 answered only on `127.0.0.1`. A container on the shared
+  network reached Grist neither by name, nor by address, nor through the host.
+- **Sandbox:** `gvisor check ok` in the log; a formula listing `/etc` gave
+  `[]`, `/persist` was empty, and there was no network. Run as `PUID:PGID`,
+  the files belong to the host's user and gVisor starts all the same.
+- **Failure:** Grist stopped, only its two lines of the health check red.
+- **Memory:** 282 MiB with a document open.
+- **Backup and restore:** the first night copied `home.sqlite3` and both
+  documents (`grist-doc-* (2 files)`), and `make backup-restore-test` brought
+  them back from off-site with `integrity_check` passing. The same night's
+  copies, put back as in [Backup and restore](#backup-and-restore) into a
+  throwaway Grist — the same image and settings, a temporary folder, another
+  port on `127.0.0.1`, the identity header sent with curl from the host —
+  opened with every table, as many rows as the live documents, and no formula
+  in error.
+
 ## Later
 
 - **Cloudflare Access**, with the first person who has no Tailscale, or with
