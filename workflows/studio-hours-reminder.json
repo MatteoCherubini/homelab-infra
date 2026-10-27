@@ -1,0 +1,95 @@
+{
+  "name": "Studio: hours reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "bdc72828-25bf-4f46-a4ec-f925d7305b11",
+      "name": "Every day at 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One line an evening, rotating with the day of the year, so the reminder does\n// not read the same every time. The form writes straight into the Ore table: an\n// evening without a form is a day without hours, and nothing needs filtering.\nconst LINES = [\n  'Hours today? Thirty seconds and you are free.',\n  'Did the business get a slice of today? Tell the form.',\n  'Nothing today is a fine answer: just swipe me away.',\n  'Write it down while you still remember it.',\n  'A minute for the minutes.',\n  'Genome, page, photos or office: where did today go?',\n  'Future you, reading the January numbers, says thanks.',\n];\nconst now = new Date();\nconst day = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);\nconst line = LINES[day % LINES.length];\nconst url = ($env.STUDIO_HOURS_FORM_URL || '').trim();\n\n// Unset, there is no link to build: the message names the missing key instead\n// of carrying a tap that opens nothing.\nconst payload = {\n  topic: 'studio',\n  title: 'Studio: hours',\n  message: url ? line : `${line}\\n\\nSTUDIO_HOURS_FORM_URL is not set: no link to the form.`,\n  tags: ['stopwatch'],\n  priority: 3,\n};\nif (url) {\n  payload.click = url;\n  payload.actions = [{ action: 'view', label: 'Open the form', url }];\n}\nreturn [{ json: { payload } }];\n"
+      },
+      "id": "52d0bfda-8042-4a7d-97ca-60b66878b0f0",
+      "name": "Build reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ntfy",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "92091df8-0fb4-4e0c-beed-b58c2aaddf72",
+      "name": "ntfy: send reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "nCv4CUN7Ef086Ewj",
+          "name": "Bearer Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every day at 18:00": {
+      "main": [
+        [
+          {
+            "node": "Build reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build reminder": {
+      "main": [
+        [
+          {
+            "node": "ntfy: send reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {},
+  "tags": []
+}

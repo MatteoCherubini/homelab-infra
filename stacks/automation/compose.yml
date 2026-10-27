@@ -36,6 +36,10 @@ x-kg-env: &kg-env
   # No KG_*_WEBHOOK_PATH here, deliberately: a Webhook node's `path` is read at
   # activation time and cannot come from the environment. See the stack doc.
   KG_IDLE_MINUTES: ${KG_IDLE_MINUTES:-30}
+  # The Grist hours form, as a PERSON opens it: the published form's link on the
+  # tailnet. The evening reminder taps through to it; unset, the reminder says
+  # so instead of carrying a link that opens nothing.
+  STUDIO_HOURS_FORM_URL: ${STUDIO_HOURS_FORM_URL:-}
 
 services:
   n8n-db:
