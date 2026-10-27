@@ -163,6 +163,31 @@ every caller refuses anything blocked.
   `skip:terminals:<n>`) in `note`. A forgotten shell keeps it on too, until it
   is closed.
 
+## Hours reminder
+
+`workflows/studio-hours-reminder.json` sends one notification every evening
+at 18:00, weekends included, on the ntfy topic `studio`. A tap opens the Grist
+hours form, which writes straight into the `Ore` table of the «Studio»
+document. **No form means no hours**: the workflow reads nothing back and
+filters nothing, because a day without a row adds nothing to any sum, and
+neither does a row of zero minutes.
+
+The link is `STUDIO_HOURS_FORM_URL`, from the anchor: the published form's
+*Copy link*, a tailnet address that opens only with Tailscale on — Grist has no
+public form ([business](business.md#who-can-reach-it)). Unset, the message
+names the key instead of carrying a link.
+
+`studio` is a topic of its own, so it can be muted apart from `homelab-jobs`,
+and ntfy denies every topic nobody was granted:
+
+```bash
+docker exec ntfy ntfy user list                             # who has which topic
+docker exec ntfy ntfy access <n8n-user> studio write-only   # the token the workflow sends with
+docker exec ntfy ntfy access <phone-user> studio read-only  # the account the phone subscribes with
+```
+
+An `admin` user needs no grant. Then subscribe to `studio` in the app.
+
 ## Syncthing
 
 Syncthing lives in this stack rather than in `tools` because it works as a pair
