@@ -1,9 +1,19 @@
 # Updating
 
-Image versions are pinned in `.env` and never floated, with three deliberate
-exceptions: **Cloudflared** and **Excalidraw**, which hold no state, and
-**Ollama**, whose models live in a volume the image does not own. Everything
-else is pinned so that "what is running" is answerable from the repository.
+Image versions are pinned in `.env` and never floated, with two deliberate
+exceptions: **Excalidraw**, which holds no state, and **Ollama**, whose models
+live in a volume the image does not own. Everything else is pinned so that
+"what is running" is answerable from the repository.
+
+**Cloudflared used to be the third exception, and it is the case against
+floating.** It holds no state, so `latest` looked harmless. But with
+`--no-autoupdate`, `latest` means whatever was pulled last, and the checker
+skips `latest` tags, so nothing ever said it was behind. On 2026-10-28 an
+e-mail from Cloudflare asked every tunnel for 2026.10.2 or later, because older
+builds still trusted eight compromised eMudhra intermediate certificates. The
+running tunnel was 2026.3.0, seven months old. "Holds no state" answers whether
+an upgrade can break something. It does not answer whether you will hear about
+one, and the door to the internet is the service where that matters most.
 
 The path is automated up to the point of decision, and manual past it.
 
@@ -43,6 +53,16 @@ by unit tests; see [testing](testing.md).
 Staying on the current major is also deliberate. Forgejo publishes 15.x and
 16.x in parallel; the checker reports 15.0.9, not 16.0.5. Crossing a major is a
 decision, not an update.
+
+**Except for calendar versions.** Cloudflared tags `year.month.patch`, so its
+"major" is a year. Staying on it, a tunnel pinned on 2026.10.5 would hear of
+every release until December and of none from January on. That would be the
+same silence as the floating tag, only postponed. A service marked
+`"versioning": "calendar"` in `services_metadata.json` is searched across
+years. A new year counts as a minor, not a major, and its drift is counted in
+months: one month weighs what a minor does, so five months behind reaches the
+workflow's drift threshold. The value is checked against the known ones,
+because a misspelt `calender` would fall back to semver without a word.
 
 ## 2. Notification
 

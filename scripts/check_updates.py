@@ -212,11 +212,15 @@ def extract_semver(version_str: str) -> tuple:
     return (0, 0, 0)
 
 
-def determine_bump(current: tuple, latest: tuple) -> tuple:
+def determine_bump(current: tuple, latest: tuple, calendar: bool = False) -> tuple:
     """
     Compares two semver tuples.
     Returns (bump_type, is_major_bump).
     bump_type: "major" | "minor" | "patch" | "none" | "unknown"
+
+    With calendar=True the tuples are (year, month, patch): a new year is
+    one more month of releases, not a break in compatibility, so it counts
+    as a minor.
     """
     if current == (0, 0, 0) or latest == (0, 0, 0):
         return "unknown", False
@@ -225,12 +229,30 @@ def determine_bump(current: tuple, latest: tuple) -> tuple:
     l_maj, l_min, l_pat = latest
 
     if l_maj > c_maj:
-        return "major", True
+        return ("minor", False) if calendar else ("major", True)
     if l_maj == c_maj and l_min > c_min:
         return "minor", False
     if l_maj == c_maj and l_min == c_min and l_pat > c_pat:
         return "patch", False
     return "none", False
+
+
+def version_gap(current: tuple, latest: tuple, calendar: bool = False) -> int:
+    """
+    How far behind a service is, used to weight priority: a major counts
+    100, a minor 10, a patch 1. Returns 0 when either side is not comparable.
+
+    With calendar=True a month counts 10, across years too: 2026.12.1 →
+    2027.1.0 is one month behind (11), not a major away (211).
+    """
+    if current == (0, 0, 0) or latest == (0, 0, 0):
+        return 0
+    if calendar:
+        months = (latest[0] * 12 + latest[1]) - (current[0] * 12 + current[1])
+        return abs(months) * 10 + abs(latest[2] - current[2])
+    return (abs(latest[0] - current[0]) * 100
+            + abs(latest[1] - current[1]) * 10
+            + abs(latest[2] - current[2]))
 
 
 # ── Build manifest ────────────────────────────────────────────────────────────
@@ -259,7 +281,7 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
     {
       compose_name, service_name, display_name,
       image_name, raw_version, current_version, full_image,
-      is_tracked, criticality, stack_name,
+      is_tracked, criticality, stack_name, versioning,
       github_owner, github_repo_name, github_repo_url, rss_url
     }
     """
@@ -291,6 +313,8 @@ def build_manifest(services: dict, metadata_map: dict) -> tuple:
         # left in it, or crash when the first service was one of them.
         display_name = ((meta or {}).get("display_name")
                         or s_name.replace("-", " ").title())
+        # "calendar" for year.month.patch tags: see determine_bump.
+        item["versioning"] = (meta or {}).get("versioning", "semver")
 
         if meta:
             # ── Service present in services_metadata.json ───────────────────
@@ -543,6 +567,11 @@ def check_updates(tracked_services: list) -> tuple:
         gh_owner        = svc.get("github_owner")
         gh_repo         = svc.get("github_repo_name")
         repo_url        = svc.get("github_repo_url", "")
+        calendar        = svc.get("versioning") == "calendar"
+        # The release search stays on the current major. A calendar version's
+        # first number is a year, and staying on it would hide every release
+        # of the next one: 2026.10.5 would never hear of 2027.1.0.
+        branch_hint     = "" if calendar else current_version
 
         result = {**svc, "checked_at": now_iso}
 
@@ -567,7 +596,7 @@ def check_updates(tracked_services: list) -> tuple:
             if gh_owner and gh_repo and repo_url:
                 try:
                     api_result    = get_latest_from_forge_api(
-                        repo_url, gh_owner, gh_repo, current_version
+                        repo_url, gh_owner, gh_repo, branch_hint
                     )
                     latest_raw    = api_result["version"]
                     is_prerelease = api_result["is_prerelease"]
@@ -583,30 +612,22 @@ def check_updates(tracked_services: list) -> tuple:
 
             # ── Fallback: RSS (when the forge API failed or is unavailable) ──
             if latest_raw is None:
-                latest_raw    = get_latest_from_rss(rss_url, current_version)
+                latest_raw    = get_latest_from_rss(rss_url, branch_hint)
                 is_prerelease = False          # RSS cannot tell: assume stable
                 release_label = "unverified"   # Flags that the API did not confirm it
                 source_method = "rss"
 
             curr_tuple              = extract_semver(current_version)
             lat_tuple               = extract_semver(latest_raw)
-            bump_type, is_major     = determine_bump(curr_tuple, lat_tuple)
-
-            # Version distance, used to weight priority
-            version_gap = 0
-            if curr_tuple != (0, 0, 0) and lat_tuple != (0, 0, 0):
-                version_gap = (
-                    abs(lat_tuple[0] - curr_tuple[0]) * 100
-                    + abs(lat_tuple[1] - curr_tuple[1]) * 10
-                    + abs(lat_tuple[2] - curr_tuple[2])
-                )
+            bump_type, is_major     = determine_bump(curr_tuple, lat_tuple, calendar)
+            gap                     = version_gap(curr_tuple, lat_tuple, calendar)
 
             result.update({
                 "latest_version": latest_raw,
                 "bump_type":      bump_type,
                 "is_major_bump":  is_major,
                 "has_update":     bump_type in ("major", "minor", "patch"),
-                "version_gap":    version_gap,
+                "version_gap":    gap,
                 "is_prerelease":  is_prerelease,
                 "release_label":  release_label,
                 "source_method":  source_method,
