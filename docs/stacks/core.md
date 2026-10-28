@@ -44,9 +44,26 @@ establishes an **outbound** connection to Cloudflare, so nothing has to be
 opened inbound on the router.
 
 `--no-autoupdate` is deliberate: the image is the unit of version control, and
-a binary that updates itself underneath a pinned tag defeats the point. This is
-one of the three services tracked on `latest` — see
+a binary that updates itself underneath a pinned tag defeats the point. The tag
+is pinned in `.env`, like every stateful service's, and the update checker
+follows it as a calendar version. On `latest` it was found seven months behind,
+on the day Cloudflare asked every tunnel to upgrade. See
 [updating](../updating.md).
+
+To upgrade, bump `CLOUDFLARED_VERSION`, then pull and recreate: restarting a
+container on the old image changes nothing. The tunnel is down for a few
+seconds, and only public traffic notices.
+
+```bash
+docker compose pull cloudflared
+docker compose up -d --no-deps cloudflared
+docker exec cloudflared cloudflared --version
+docker logs --since 2m cloudflared 2>&1 | grep -iE "registered|error"   # four connections
+```
+
+Cloudflare's dashboard lists every connector with its version, under Networking
+→ Tunnels. If a route points to an `https://` origin, its certificate must
+validate. Never fix an error there by turning on *No TLS Verify*.
 
 Consequence worth knowing: when the tunnel is down, anything addressed by its
 public hostname stops resolving. Internal calls between services use container

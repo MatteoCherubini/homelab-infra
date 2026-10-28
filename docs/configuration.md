@@ -136,5 +136,5 @@ they are not repository configuration.
 
 ## Versions
 
-Image versions are pinned in `.env` and never floated, with three deliberate
+Image versions are pinned in `.env` and never floated, with two deliberate
 exceptions. [updating](updating.md) covers the policy and the checker.

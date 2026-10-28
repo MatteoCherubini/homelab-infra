@@ -31,7 +31,7 @@ suite reports one skip rather than a clean sweep.
 
 ### The unit tests
 
-30 tests, standard library only — nothing to install — with HTTP calls replaced
+39 tests, standard library only — nothing to install — with HTTP calls replaced
 by canned responses.
 
 They exist for one reason: `scripts/check_updates.py` **fails silently**. If
@@ -41,11 +41,13 @@ none. Each test pins one concrete way of failing like that, including the
 defects found in this codebase — picking whichever release the forge listed
 first, matching pre-release keywords as bare substrings, and a display name
 carried over from the previous service (or a crash, when a dependency came
-first). Others check that the manifest reads both compose projects.
+first). Others check that the manifest reads both compose projects, and that
+a calendar version is searched across years rather than kept on one.
 
 `tests/test_check_updates.py` also asserts on `services_metadata.json` itself:
 a service that loses its `repo` or owner/name pair stays *tracked* but becomes
-*uncheckable*, which is exactly the case that goes unnoticed.
+*uncheckable*, which is exactly the case that goes unnoticed. The same goes for a
+`versioning` value outside the known ones.
 
 ### Has the suite ever failed?
 
