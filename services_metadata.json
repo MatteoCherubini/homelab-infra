@@ -2,7 +2,8 @@
   "cloudflared": {
     "repo": "cloudflare/cloudflared",
     "criticality": "stateless",
-    "stack": "core"
+    "stack": "core",
+    "versioning": "calendar"
   },
   "excalidraw": {
     "repo": "excalidraw/excalidraw",

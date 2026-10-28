@@ -178,10 +178,10 @@ and nowhere else.
 Kubernetes would add an orchestration layer whose failure modes are harder to
 debug than the problems it would solve here.
 
-**Pinned tags, with three exceptions.** Cloudflared and Excalidraw hold no
-state; Ollama's models live in a volume the image does not own. Everything else
-is pinned so that "what is running" is answerable from the repository. See
-[updating](updating.md).
+**Pinned tags, with two exceptions.** Excalidraw holds no state; Ollama's
+models live in a volume the image does not own. Everything else is pinned so
+that "what is running" is answerable from the repository. Cloudflared floated
+too, until it was found seven months behind. See [updating](updating.md).
 
 **Configuration is data, not shell.** `.env` is parsed key by key rather than
 sourced. See [configuration](configuration.md).
