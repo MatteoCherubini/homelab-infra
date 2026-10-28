@@ -94,6 +94,33 @@ class TestDetermineBump(unittest.TestCase):
         self.assertEqual(cu.determine_bump((0, 0, 0), (1, 2, 3)), ("unknown", False))
         self.assertEqual(cu.determine_bump((1, 2, 3), (0, 0, 0)), ("unknown", False))
 
+    def test_a_new_year_is_not_a_major_for_calendar_versions(self):
+        # cloudflared tags year.month.patch: 2026.12.1 → 2027.1.0 is the next
+        # monthly release, and a MAJOR flag would escalate it for nothing.
+        self.assertEqual(cu.determine_bump((2026, 12, 1), (2027, 1, 0), calendar=True),
+                         ("minor", False))
+        self.assertEqual(cu.determine_bump((2026, 10, 2), (2026, 10, 5), calendar=True),
+                         ("patch", False))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+class TestVersionGap(unittest.TestCase):
+
+    def test_semver_weights(self):
+        self.assertEqual(cu.version_gap((2, 33, 6), (2, 39, 10)), 64)
+        self.assertEqual(cu.version_gap((1, 0, 0), (2, 0, 0)), 100)
+
+    def test_non_comparable_version(self):
+        self.assertEqual(cu.version_gap((0, 0, 0), (1, 2, 3)), 0)
+
+    def test_calendar_counts_months_across_years(self):
+        self.assertEqual(cu.version_gap((2026, 12, 1), (2027, 1, 0), calendar=True), 11)
+
+    def test_calendar_drift_from_2026_10_28(self):
+        # The tunnel was found on 2026.3.0 with 2026.10.5 out: seven months,
+        # past the workflow's drift threshold of 50.
+        self.assertEqual(cu.version_gap((2026, 3, 0), (2026, 10, 5), calendar=True), 75)
+
 
 # ──────────────────────────────────────────────────────────────────────────
 class TestIsStableRelease(unittest.TestCase):
@@ -285,6 +312,65 @@ class TestMetadataConsistency(unittest.TestCase):
                            bool(entry.get("github_repo_name"))
                 self.assertTrue(has_repo or has_pair,
                                 f"{name} is tracked but has no repository to query")
+
+    def test_versioning_is_one_of_the_known_values(self):
+        # A misspelt "calender" would fall back to semver without a word, and
+        # the check would stay on one year again.
+        for name, entry in self.meta.items():
+            if "versioning" in entry:
+                with self.subTest(service=name):
+                    self.assertIn(entry["versioning"], {"semver", "calendar"})
+
+
+# ──────────────────────────────────────────────────────────────────────────
+class TestCalendarVersioning(unittest.TestCase):
+    """
+    The release search stays on the current major, and for a calendar version
+    the major is a year: pinned on 2026.10.5, cloudflared would never hear of
+    2027.1.0. Silence of that kind is what left the tunnel seven months
+    behind, until Cloudflare's own e-mail on 2026-10-28.
+    """
+
+    RELEASES = [gh_release("2027.1.0"), gh_release("2026.12.1"),
+                gh_release("2026.10.5")]
+
+    def run_check(self, versioning):
+        svc = {"compose_name": "cloudflared", "display_name": "Cloudflared",
+               "current_version": "2026.10.5", "versioning": versioning,
+               "criticality": "stateless", "stack_name": "core",
+               "github_owner": "cloudflare", "github_repo_name": "cloudflared",
+               "github_repo_url": "https://github.com/cloudflare/cloudflared",
+               "rss_url": "https://github.com/cloudflare/cloudflared/releases.atom"}
+        with mock.patch.object(cu.requests, "get",
+                               return_value=fake_response(self.RELEASES)), \
+             mock.patch.object(cu.time, "sleep"):
+            updates, errors, _ = cu.check_updates([svc])
+        self.assertEqual(errors, [])
+        return updates
+
+    def test_crosses_into_the_next_year(self):
+        [u] = self.run_check("calendar")
+        self.assertEqual(u["latest_version"], "2027.1.0")
+        self.assertEqual((u["bump_type"], u["is_major_bump"]), ("minor", False))
+        self.assertEqual(u["version_gap"], 35)
+
+    def test_semver_still_stays_on_its_major(self):
+        # The same releases read as semver: 2026 is a major, and the check
+        # proposes the newest release on it. The calendar rule must not leak
+        # into the default.
+        [u] = self.run_check("semver")
+        self.assertEqual(u["latest_version"], "2026.12.1")
+
+    def test_the_manifest_carries_the_versioning(self):
+        services = {"cloudflared": {"image": "cloudflare/cloudflared:2026.10.5"},
+                    "n8n":         {"image": "n8nio/n8n:2.41.6"}}
+        meta = {"cloudflared": {"repo": "cloudflare/cloudflared", "stack": "core",
+                                "criticality": "stateless", "versioning": "calendar"},
+                "n8n":         {"repo": "n8n-io/n8n", "stack": "automation",
+                                "criticality": "critical"}}
+        items, _ = cu.build_manifest(services, meta)
+        self.assertEqual({i["compose_name"]: i["versioning"] for i in items},
+                         {"cloudflared": "calendar", "n8n": "semver"})
 
 
 
