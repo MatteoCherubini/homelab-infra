@@ -46,6 +46,8 @@ DESCRIPTIONS = {"cliente": "Client genome", "storia": "Story genome", "interno":
 # The table, as the API takes it. Codice and Stato are TRIGGER formulas: data
 # columns computed once, when the row is created, and never again — a code that
 # followed $id after a re-import would rename a genome that already exists.
+# Rows are never deleted (Stato «chiuso» instead): Grist numbers a new row
+# after the highest one, so deleting the last row could give its code away.
 COLUMNS = [
     {"id": "Codice", "fields": {"label": "Codice", "type": "Text", "isFormula": False,
                                 "formula": "'g%04d' % $id", "recalcWhen": 0}},

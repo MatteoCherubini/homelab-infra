@@ -185,6 +185,10 @@ out of the machine.
 
 `Progetti` has a `Genoma` column, a reference to the row.
 
+**A row of Genomi is never deleted:** its `Stato` becomes `chiuso`. Grist
+gives a new row the highest id plus one, so deleting the last row could hand
+its code — and its genome's name — to the next one.
+
 **Everything runs on the laptop**, from `scripts/studio_genomes.py`:
 
 ```bash
