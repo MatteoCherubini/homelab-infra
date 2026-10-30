@@ -83,6 +83,25 @@ Only the auth database is persisted. The message cache is in memory, so
 notifications are not durable — which is the right trade for alerts that are
 only interesting while they are fresh.
 
+**One user per laptop, with only its topics.** A laptop follows its topics
+with ntfy's own client (the dotfiles install it, with a user service and the
+token read from Vaultwarden). It gets a user of its own and access to the
+topics it needs, never the admin's token — so a collaborator's laptop that is
+lost is one user to delete:
+
+```bash
+docker exec -it ntfy ntfy user add laptop-<who>                  # asks for a password
+docker exec ntfy ntfy access laptop-<who> genome-requests rw     # genomes to create; it publishes there too
+docker exec ntfy ntfy access laptop-<who> homelab-genome ro      # the pipeline's notifications
+docker exec ntfy ntfy token add laptop-<who>                     # the token, into Vaultwarden
+```
+
+| Topic | Who publishes | Who reads |
+|-------|---------------|-----------|
+| `genome-requests` | the owner's laptop (`studio_genomes.py`, [business](business.md)) | the phone, the laptops |
+| `homelab-genome` | the orchestrator's flows in n8n | the phone, the laptops |
+| `studio` | the hours reminder | the phone |
+
 To check it end-to-end without touching a real topic, grant anonymous access to
 a throwaway one, publish, read back, and revoke:
 
