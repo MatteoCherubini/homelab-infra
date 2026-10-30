@@ -289,8 +289,20 @@ def create(grist, cfg, code, yes=False, run=subprocess.run, popen=subprocess.Pop
         return 1
     genome = f"genome-{code}"
     desc = DESCRIPTIONS[row["fields"]["Tipo"]]
-    env = secrets(os.environ if env is None else env, cfg, run=run)
+    env = dict(os.environ if env is None else env)
+    # Vaultwarden is closed again by whoever opened it: if this run unlocked it,
+    # this run locks it, however it ends — a session left open outlives the
+    # command that needed it.
+    unlocked_here = not env.get("BW_SESSION")
+    env = secrets(env, cfg, run=run)
+    try:
+        return _create(grist, cfg, row, genome, desc, env, yes, run, popen, ask, say)
+    finally:
+        if unlocked_here:
+            run(["bw", "lock"], capture_output=True, text=True, env=env)
 
+
+def _create(grist, cfg, row, genome, desc, env, yes, run, popen, ask, say):
     preview = new_genome(cfg, genome, desc, False, env, popen=popen, say=say)
     if preview.get("status") != "dry":
         say("the dry run did not complete: read it above")
@@ -311,7 +323,6 @@ def create(grist, cfg, code, yes=False, run=subprocess.run, popen=subprocess.Pop
     notify(cfg["STUDIO_NTFY_TOPIC"], f"{genome} created", "Ready: its folder is with the other Obsidian vaults.", run=run)
     say(f"{genome}: created, and Grist says so")
     return 0
-
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
