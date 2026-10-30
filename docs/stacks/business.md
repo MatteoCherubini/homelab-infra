@@ -164,6 +164,56 @@ The two speak through n8n, not to each other, and only from the next phase:
 
 The schema of the tables comes from the documents already in Paperless.
 
+## A genome from a row: «Studio», table Genomi
+
+A knowledge genome is born from a row, and is named after it: the row's code,
+`g0007`, makes `genome-g0007`. The code is a trigger formula — computed once
+when the row is created, never again — so a re-import cannot rename a genome
+that exists. The row's label stays in Grist: it reaches no repository, no
+registry, no notification and no log, and that is what keeps a client's name
+out of the machine.
+
+| Column | What |
+|--------|------|
+| `Codice` | `g0001`, `g0002`… — set at creation, never reused |
+| `Etichetta` | how you recognise the row; never leaves Grist |
+| `Tipo` | `cliente`, `storia` or `interno` |
+| `Consenso Paperless` | the number of the signed consent in Paperless; required unless `interno` |
+| `Avvia` | ticked when the conversation is done and the genome should start |
+| `Stato` | `richiesto` at creation, `creato` when the genome exists; `in pausa`, `chiuso` later |
+| `Creato il`, `Repo` | written back when the genome exists |
+
+`Progetti` has a `Genoma` column, a reference to the row.
+
+**Everything runs on the laptop**, from `scripts/studio_genomes.py`:
+
+```bash
+python3 scripts/studio_genomes.py schema            # what it would create; --apply to create it
+python3 scripts/studio_genomes.py check             # the timer's job: one notification per waiting row
+python3 scripts/studio_genomes.py create g0007      # on the home LAN: the genome, then «creato» back
+```
+
+`create` refuses off the home LAN (the route to `STUDIO_LAN_IP` must not go
+through the tailnet: a genome's key is born only at home), refuses a person's
+genome without its consent, shows the orchestrator's dry run, asks, then runs
+`scripts/new-genome.sh --apply` with Vaultwarden opened once — the forge token
+is read from it — and marks the row only when the genome is complete. Its
+configuration is `~/.config/studio/studio.env`: `GRIST_URL`, `STUDIO_DOC_ID`,
+`STUDIO_LAN_IP`, `KG_ORCHESTRATOR_DIR`.
+
+**Why the laptop asks, and not a webhook or n8n.** Grist sends a webhook to a
+plain-`http` address only on `localhost`; reaching `http://n8n:5678` takes
+`ALLOWED_WEBHOOK_DOMAINS=*`, which lets every document owner make Grist call
+any address, the LAN included. And to receive it n8n would join `business`,
+from where it can send the identity header itself and read every document,
+«Finanze» too. An API key is no better: a key is a user's, not a document's.
+The laptop instead reaches Grist exactly as the browser does, with the
+device's identity and no key at all, and the notification it sends is only
+useful there — a genome is created from the laptop, so a laptop that is off
+has nothing to act on. A systemd user timer runs `check` every ten minutes;
+the notification goes to the ntfy topic `genome-requests`, which the phone and
+the laptop both follow.
+
 ## Backup and restore
 
 Two lines in `backup/sqlite.list`, copied online with `sqlite3 .backup` before
