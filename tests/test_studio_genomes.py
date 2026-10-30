@@ -237,6 +237,18 @@ class CreateTest(unittest.TestCase):
         self.assertEqual(len(popen.calls), 1)
         self.assertEqual(g.writes, [])
 
+    def test_vaultwarden_is_locked_again_by_the_run_that_unlocked_it(self):
+        for answer, popen in (("y", Popen()), ("n", Popen()), ("y", Popen(applied="incomplete"))):
+            _, _, runner, _ = self.go([row()], popen=popen, answer=answer)
+            self.assertEqual(runner.calls[-1], ["bw", "lock"], f"not locked after answer {answer!r}")
+
+    def test_a_session_that_was_already_open_is_left_to_its_owner(self):
+        g, runner = FakeGrist(rows=[row()]), Runner()
+        sg.create(g, CFG, "g0007", run=runner, popen=Popen(), ask=lambda _: "y",
+                  env={"BW_SESSION": "theirs", "FORGEJO_TOKEN": "t"}, say=quiet)
+        self.assertNotIn(["bw", "lock"], runner.calls)
+        self.assertNotIn(["bw", "unlock", "--raw"], runner.calls)
+
     def test_a_code_that_is_not_a_genomi_code_is_refused(self):
         rc, _, runner, _ = self.go([row()], code="../etc")
         self.assertEqual(rc, 1)
