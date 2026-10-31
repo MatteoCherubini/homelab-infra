@@ -21,8 +21,8 @@ Configuration, from the environment or ~/.config/studio/studio.env:
     KG_ORCHESTRATOR_DIR  the orchestrator checkout (default ~/Progetti/knowledge-genome-orchestrator)
     STUDIO_LAN_IP        an address reached only at home; `create` refuses when the
                          route to it goes through the tailnet
-    STUDIO_NTFY_TOPIC    default genome-requests; `ntfy publish` reads host and token
-                         from its own client.yml
+    STUDIO_NTFY_TOPIC    default genome-requests; published only to the https server
+                         named in ntfy's own client.yml, which also holds the token
     STUDIO_FORGEJO_ITEM  the Vaultwarden item holding the owner's forge token
                          (default "forgejo token")
 """
@@ -36,6 +36,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 TABLE = "Genomi"
@@ -165,9 +166,38 @@ def waiting(rows):
             and CODE_RE.match(r["fields"].get("Codice") or "")]
 
 
-def notify(topic, title, message, run=subprocess.run):
-    """ntfy's own client: host and token come from its client.yml."""
-    return run(["ntfy", "publish", "--title", title, "--tags", "seedling", topic, message],
+# ntfy's client falls back to the PUBLIC ntfy.sh when its client.yml is missing
+# or names no server, and says nothing: a topic there is anyone's to read and to
+# write. It happened on 2026-10-31 with a test message. So the server is read
+# here, and the message goes to it by its full address or not at all.
+NTFY_CLIENT = "~/.config/ntfy/client.yml"
+
+
+def ntfy_server(path=None):
+    """The https server named in ntfy's client.yml, or None — never the public one."""
+    try:
+        with open(os.path.expanduser(path or NTFY_CLIENT)) as f:
+            text = f.read()
+    except OSError:
+        return None
+    m = re.search(r"^default-host:\s*[\"']?([^\"'\s#]+)", text, re.M)
+    if not m:
+        return None
+    url = urllib.parse.urlsplit(m.group(1))
+    host = url.hostname or ""
+    if url.scheme != "https" or not host or host == "ntfy.sh" or host.endswith(".ntfy.sh"):
+        return None
+    return m.group(1).rstrip("/")
+
+
+def notify(topic, title, message, run=subprocess.run, say=print):
+    """ntfy's own client, to our server only; the token comes from its client.yml."""
+    server = ntfy_server()
+    if not server:
+        say(f"not notified: {os.path.expanduser(NTFY_CLIENT)} names no https server of ours, "
+            "and ntfy alone would send it to the public ntfy.sh")
+        return False
+    return run(["ntfy", "publish", "--title", title, "--tags", "seedling", f"{server}/{topic}", message],
                capture_output=True, text=True).returncode == 0
 
 
@@ -193,7 +223,8 @@ def check(grist, cfg, state_path=None, now=None, run=subprocess.run, say=print):
         # The label stays in Grist: the notification travels through ntfy and
         # lands on a lock screen.
         if notify(cfg["STUDIO_NTFY_TOPIC"], f"genome-{code} to create",
-                  f"Type: {kind}. From the laptop, on the LAN: studio_genomes.py create {code}", run=run):
+                  f"Type: {kind}. From the laptop, on the LAN: studio_genomes.py create {code}",
+                  run=run, say=say):
             seen[code] = now
             sent += 1
     os.makedirs(os.path.dirname(state_path), exist_ok=True)
@@ -320,7 +351,8 @@ def _create(grist, cfg, row, genome, desc, env, yes, run, popen, ask, say):
     midnight = int(datetime.datetime(today.year, today.month, today.day,
                                      tzinfo=datetime.timezone.utc).timestamp())
     grist.update(TABLE, row["id"], {"Stato": "creato", "Creato_il": midnight, "Repo": result.get("repo", "")})
-    notify(cfg["STUDIO_NTFY_TOPIC"], f"{genome} created", "Ready: its folder is with the other Obsidian vaults.", run=run)
+    notify(cfg["STUDIO_NTFY_TOPIC"], f"{genome} created", "Ready: its folder is with the other Obsidian vaults.",
+           run=run, say=say)
     say(f"{genome}: created, and Grist says so")
     return 0
 

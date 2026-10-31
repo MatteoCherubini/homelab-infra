@@ -216,7 +216,10 @@ device's identity and no key at all, and the notification it sends is only
 useful there — a genome is created from the laptop, so a laptop that is off
 has nothing to act on. A systemd user timer runs `check` every ten minutes;
 the notification goes to the ntfy topic `genome-requests`, which the phone and
-the laptop both follow.
+the laptop both follow. It goes only to the https server named in ntfy's own
+`client.yml`, by its full address: without that file ntfy would send it to the
+public `ntfy.sh`, so `check` and `create` say "not notified" instead, and a
+genome is created all the same.
 
 ## Backup and restore
 
