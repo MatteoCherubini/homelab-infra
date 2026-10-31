@@ -106,7 +106,9 @@ docker exec ntfy ntfy token add laptop-<who>                     # the token, in
 *Use another server* and this installation's address; without it the app uses
 `ntfy.sh`, where a topic is public — anyone could publish a fake "genome to
 create" with a command in it. The same holds for the CLI: without its
-`client.yml`, `ntfy publish` goes to `ntfy.sh`.
+`client.yml`, `ntfy publish` goes to `ntfy.sh`. That is why
+`studio_genomes.py` reads the server from `client.yml` itself and publishes to
+it by full address, or not at all.
 
 **The password of a laptop user is nobody's.** The laptop uses its token, so
 the password is set to a random value no one keeps:
