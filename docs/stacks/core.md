@@ -102,6 +102,33 @@ docker exec ntfy ntfy token add laptop-<who>                     # the token, in
 | `homelab-genome` | the orchestrator's flows in n8n | the phone, the laptops |
 | `studio` | the hours reminder | the phone |
 
+**Subscriptions only on this server.** In the phone app a topic is added with
+*Use another server* and this installation's address; without it the app uses
+`ntfy.sh`, where a topic is public — anyone could publish a fake "genome to
+create" with a command in it. The same holds for the CLI: without its
+`client.yml`, `ntfy publish` goes to `ntfy.sh`.
+
+**The password of a laptop user is nobody's.** The laptop uses its token, so
+the password is set to a random value no one keeps:
+
+```bash
+sudo docker exec -e NTFY_PASSWORD="$(head -c 32 /dev/urandom | base64)" ntfy ntfy user change-pass laptop-<who>
+```
+
+**Rotating a laptop's token** — for instance after it was printed somewhere,
+as happened on 2026-10-31 with `chezmoi apply -v`:
+
+```bash
+docker exec ntfy ntfy token remove laptop-<who> <old token>
+docker exec ntfy ntfy token add laptop-<who>                     # into the same Vaultwarden item
+```
+
+Then, on the laptop, `bw sync` (bw reads a local copy and would hand back the
+old token) and the laptop's `client.yml` is rebuilt from Vaultwarden — the
+dotfiles README has the blocks. A check that never prints the token:
+`curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer …" https://<ntfy>/v1/account`
+answers 200 for a valid token, 401 for a removed one.
+
 To check it end-to-end without touching a real topic, grant anonymous access to
 a throwaway one, publish, read back, and revoke:
 
