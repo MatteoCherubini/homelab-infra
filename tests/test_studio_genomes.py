@@ -21,6 +21,20 @@ _spec = importlib.util.spec_from_file_location(
 sg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sg)
 
+# Every test publishes through a client.yml of its own, never the laptop's.
+NTFY_HOME = tempfile.mkdtemp()
+
+
+def client_yml(text):
+    path = os.path.join(tempfile.mkdtemp(dir=NTFY_HOME), "client.yml")
+    with open(path, "w") as f:
+        f.write(text)
+    return path
+
+
+OUR_NTFY = client_yml("default-host: https://ntfy.example.net\ndefault-token: tk_test\n")
+sg.NTFY_CLIENT = OUR_NTFY
+
 CFG = {"STUDIO_NTFY_TOPIC": "genome-requests", "KG_ORCHESTRATOR_DIR": "/orch",
        "STUDIO_LAN_IP": "192.168.1.10", "STUDIO_FORGEJO_ITEM": "forgejo token"}
 LABEL = "Sample Workshop of a Person"
@@ -176,6 +190,53 @@ class CheckTest(unittest.TestCase):
         sg.check(g, CFG, self.state, now=1000, run=Runner(notify_ok=False), say=quiet)
         r = Runner()
         self.assertEqual(sg.check(g, CFG, self.state, now=1100, run=r, say=quiet), 1)
+
+
+class NotifyTest(unittest.TestCase):
+    """ntfy alone falls back to the PUBLIC ntfy.sh, where a topic is anyone's."""
+
+    def tearDown(self):
+        sg.NTFY_CLIENT = OUR_NTFY
+
+    def refused(self, client):
+        sg.NTFY_CLIENT = client
+        r, said = Runner(), []
+        self.assertFalse(sg.notify("genome-requests", "t", "m", run=r, say=said.append))
+        self.assertEqual(r.ntfy(), [], "it published anyway")
+        self.assertIn("ntfy.sh", " ".join(said), "the refusal does not say why")
+
+    def test_without_a_client_yml_nothing_is_published(self):
+        self.refused(os.path.join(NTFY_HOME, "missing", "client.yml"))
+
+    def test_a_client_yml_without_a_server_is_refused(self):
+        self.refused(client_yml("default-token: tk_test\n"))
+
+    def test_the_public_server_is_refused_even_when_named(self):
+        self.refused(client_yml("default-host: https://ntfy.sh\n"))
+
+    def test_a_server_without_https_is_refused(self):
+        self.refused(client_yml("default-host: http://ntfy.example.net\n"))
+
+    def test_it_publishes_to_the_named_server_by_its_full_address(self):
+        r = Runner()
+        self.assertTrue(sg.notify("genome-requests", "t", "m", run=r, say=quiet))
+        self.assertIn("https://ntfy.example.net/genome-requests", r.ntfy()[0])
+
+    def test_a_refused_notification_is_tried_again_at_the_next_check(self):
+        state = os.path.join(tempfile.mkdtemp(), "notified.json")
+        g = FakeGrist(rows=[row()])
+        sg.NTFY_CLIENT = os.path.join(NTFY_HOME, "missing", "client.yml")
+        self.assertEqual(sg.check(g, CFG, state, now=1000, run=Runner(), say=quiet), 0)
+        sg.NTFY_CLIENT = OUR_NTFY
+        self.assertEqual(sg.check(g, CFG, state, now=1100, run=Runner(), say=quiet), 1)
+
+    def test_a_genome_is_still_created_when_the_notification_is_refused(self):
+        sg.NTFY_CLIENT = os.path.join(NTFY_HOME, "missing", "client.yml")
+        g, r = FakeGrist(rows=[row()]), Runner()
+        rc = sg.create(g, CFG, "g0007", run=r, popen=Popen(), ask=lambda _: "y", env={}, say=quiet)
+        self.assertEqual(rc, 0)
+        self.assertEqual(g.writes[-1][2]["fields"]["Stato"], "creato")
+        self.assertEqual(r.ntfy(), [])
 
 
 class CreateTest(unittest.TestCase):
