@@ -374,7 +374,12 @@ sudo upsmon -c fsd
 2. Wait past the grace period (180 seconds here).
 3. **The hypervisor** must shut down cleanly (guests → host halt).
 4. **The server** must stay up.
-5. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer.
+5. **Nothing wakes the hypervisor** while on battery. Ask for it as an ingest
+   would: run the reconcile safety-net in n8n by hand, or call Power Manager
+   with `mode: ensure-on`. It must answer `blocked`, "The UPS is on battery
+   (OB …)", and the hypervisor must stay off.
+6. Plug it back in before `LOWBATT` → `ONLINE` cancels the timer. The next
+   ensure-on wakes the hypervisor as usual.
 
 ### 6. Killpower check (LOWBATT)
 
@@ -465,6 +470,7 @@ up.
 ## 📝 Operational notes
 
 - **Do not trust `battery.runtime`** while the hypervisor is running: the calibration is for low load.
+- **Nothing is switched on while on battery**: Power Manager answers `blocked` to every `ensure-on` while any UPS reports `OB` or `FSD` ([automation](automation.md#power-manager)). Without that, the safety-net would find the ingest the shutdown interrupted and wake the hypervisor on battery, where the timer that stopped it does not fire a second time.
 - **Rejected work is not lost**: the ingest queue is persistent, and `genome-reconcile` picks it up once power is back.
 - **Notifications are best-effort**: if the modem is not on the UPS the ntfy push will not go out during an outage — the shutdown still proceeds.
 - **The firewall** is not in the critical path (the server and the hypervisor share one subnet). If it is not on the UPS it drops and comes back by itself.
