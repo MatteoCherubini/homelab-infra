@@ -22,6 +22,20 @@ It is classified `critical` in `services_metadata.json`: everything reachable
 from outside passes through it, so an upgrade that goes wrong takes every
 published service with it.
 
+**On a server where `tailscale serve` also uses 443, publish Nginx's 443 on
+the LAN address only:** `NGINX_HTTPS_PORT=<lan-address>:443` in `.env` (the
+compose file takes `address:port` there as it is). Since Tailscale 1.104,
+`tailscaled` holds a real socket on the tailnet address for every serve port,
+and Linux refuses a container that asks for the same port on every address.
+Whichever starts first wins. On 2026-11-02 an upgrade restarted both, Tailscale
+came back first, and Nginx failed with `address already in use`; `docker
+compose up` then interrupted every service still waiting for a database, so
+half the stack stayed down and `homelab-compose` ended in `failed`. The same
+race runs at every boot, after a blackout too. With the LAN address the two
+never meet, and no address changes: the tailnet keeps its 443 for the service
+it serves, the LAN keeps Nginx. The rule underneath: a `tailscale serve` port
+never equals a port published on every address.
+
 A caveat that matters when checking whether it works: **Nginx answers `200`
 from its own frontend even when the service behind it is broken.** That is why
 `make healthcheck` asserts on response bodies for the services that expose a

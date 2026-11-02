@@ -119,6 +119,30 @@ Per-service upgrade notes live with each stack:
 [documents](stacks/documents.md#updating) ·
 [business](stacks/business.md#updating)
 
+### Upgrading Docker or containerd restarts every stack
+
+`homelab-compose.service` has `Requires=docker.service`, so when apt restarts
+Docker or containerd, systemd restarts the stacks too: `compose down`, then
+`compose up -d`. And `compose up` stops at the first container that fails to
+start, leaving every service still waiting on a dependency in `created`: one
+failure takes half the stack with it, and the unit ends in `failed`, where
+`systemctl stop homelab-compose` — what the UPS handler runs before the halt —
+does nothing. On 2026-11-02 the failure was a port taken by Tailscale, upgraded
+in the same run ([core](stacks/core.md#nginx-proxy-manager)).
+
+So a host upgrade that touches Docker, containerd or Tailscale is an upgrade
+of everything: `make backup` first, run it inside `tmux`, and afterwards
+
+```bash
+systemctl is-active homelab-compose homelab-ai    # both: active
+make healthcheck
+```
+
+If something stayed `created`, the journal says why
+(`journalctl -u homelab-compose --since -30min`); once fixed,
+`sudo systemctl start homelab-compose && sudo systemctl start homelab-ai`
+brings the units back to `active`.
+
 ### Measure the baseline with the tool you will judge by
 
 Run the verification **before** the upgrade, not only after, and run the same
