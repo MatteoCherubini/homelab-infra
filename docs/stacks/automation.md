@@ -147,6 +147,19 @@ Called as a sub-workflow with `mode` set to `ensure-on`, `ensure-off` or
 `status`. It answers `status: ok`, or `status: blocked` with `blocked_by`, and
 every caller refuses anything blocked.
 
+- **On battery it switches nothing on.** `ensure-on` first reads every UPS the
+  server knows (`upsc -l`, then `ups.status`), as `n8n-runner`, and with `OB`
+  or `FSD` in any of them answers `blocked`, with what the UPS said in
+  `blocked_by`. In a blackout the UPS handler shuts the hypervisor down after
+  the grace period, and only once per outage ([ups](ups.md)): the next ingest,
+  or the fifteen-minute safety-net, would otherwise wake it on battery, and at
+  low battery it would lose power hard. The check comes before everything,
+  the grace period included, since a guest started then is lost a minute
+  later. A UPS that cannot be read changes nothing: the lost link has its own
+  notice, and without a reading there is no shutdown to protect. `ensure-off`
+  and `status` never ask. `tests/test_power_manager.py` holds all of this.
+  Check that `n8n-runner` reads the UPS after a NUT change:
+  `sudo -u n8n-runner upsc ups@localhost ups.status` must answer `OL`.
 - **Every wait checks what it waited for.** The hypervisor not waking, the AI
   node not reaching `running`, or not answering over SSH once running, each
   ends in `blocked` — never in `ok`. A node that Proxmox reports as running is

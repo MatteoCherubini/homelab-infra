@@ -1022,6 +1022,94 @@
       ],
       "id": "4115c909-c7a5-471e-8a18-0af18072b451",
       "name": "B6c - Output kept on"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "st=$( (for u in $(upsc -l); do upsc \"$u\" ups.status; done) 2>/dev/null | paste -sd ' ' -); case \" $st \" in *\" OB \"*|*\" FSD \"*) echo \"battery: $st\" ;; \"  \") echo \"unknown: the UPS cannot be read\" ;; *) echo \"mains: $st\" ;; esac"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -1024
+      ],
+      "id": "918ed947-fdc9-41b9-a128-38350831645d",
+      "name": "A0 - UPS status",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "n8n container -> n8n-runner@server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "77832095-74a5-4d5b-98e2-7b973297d7d6",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "battery",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -400,
+        -1024
+      ],
+      "id": "088aeb74-e27a-47b3-8a8e-6fa2da872956",
+      "name": "A0b - On battery?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "13f1aca8-0378-4077-af28-22edc0580e1e",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "4fcc0745-b0b5-4242-8f6e-2a8f0f3b9a9f",
+              "name": "mode",
+              "value": "ensure-on",
+              "type": "string"
+            },
+            {
+              "id": "b661981c-ab6d-44c7-9b3c-cb8eac27d799",
+              "name": "blocked_by",
+              "value": "={{ 'The UPS is on battery (' + ($json.stdout || '').trim().replace(/^battery: /, '') + '): nothing is switched on until mains power is back. The work waits, and the safety-net picks it up then.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -400,
+        -800
+      ],
+      "id": "dc5f491c-e2ef-4ad8-8eda-0cfc0a31ab20",
+      "name": "A0c - Output blocked (battery)"
     }
   ],
   "pinData": {},
@@ -1223,7 +1311,7 @@
       "main": [
         [
           {
-            "node": "A1 - Hypervisor reachable?",
+            "node": "A0 - UPS status",
             "type": "main",
             "index": 0
           }
@@ -1375,6 +1463,35 @@
         [
           {
             "node": "B7 - Output OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A0 - UPS status": {
+      "main": [
+        [
+          {
+            "node": "A0b - On battery?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A0b - On battery?": {
+      "main": [
+        [
+          {
+            "node": "A0c - Output blocked (battery)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A1 - Hypervisor reachable?",
             "type": "main",
             "index": 0
           }
