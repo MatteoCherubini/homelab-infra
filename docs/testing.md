@@ -31,10 +31,10 @@ suite reports one skip rather than a clean sweep.
 
 ### The unit tests
 
-39 tests, standard library only — nothing to install — with HTTP calls replaced
+77 tests, standard library only — nothing to install — with HTTP calls replaced
 by canned responses.
 
-They exist for one reason: `scripts/check_updates.py` **fails silently**. If
+They began for one reason: `scripts/check_updates.py` **fails silently**. If
 release selection wrongly discards a valid release it raises nothing and
 reports "no updates", which is indistinguishable from there genuinely being
 none. Each test pins one concrete way of failing like that, including the
@@ -49,13 +49,25 @@ a service that loses its `repo` or owner/name pair stays *tracked* but becomes
 *uncheckable*, which is exactly the case that goes unnoticed. The same goes for a
 `versioning` value outside the known ones.
 
+`tests/test_power_manager.py` reads `workflows/power-manager.json` as a graph:
+no Wake-on-LAN and no AI node start can be reached without the battery gate,
+`ensure-on` meets it first, `ensure-off` never does. The gate's command runs
+for real under `/bin/sh` against a fake `upsc`: on battery the flow ends in
+`blocked`, on mains or with no reading it goes on. A wake on battery shows
+nothing until a blackout, so this is the only place it can be seen.
+
 ### Has the suite ever failed?
 
 A suite that has only ever been green is unproven. This one was verified by
 injecting six faults and confirming each is caught: broken YAML, a missing
 include target, a committed JWT, a committed private key, broken shell syntax,
 and the release-selection regression reintroduced. The last fails with
-`'n8n@2.39.9' != 'n8n@2.39.10'`.
+`'n8n@2.39.9' != 'n8n@2.39.10'`. The battery gate of Power Manager was
+verified the same way, on 2026-11-02: ten faults planted in the flow (the gate
+bypassed, its branches swapped, put only in front of Wake-on-LAN, blind to
+`OB`, closed on an unreadable UPS, reading only the first UPS, in front of
+`ensure-off`, answering `ok`, without the UPS's words, a second Wake-on-LAN
+around it), each one caught.
 
 ---
 
