@@ -158,8 +158,10 @@ every caller refuses anything blocked.
   later. A UPS that cannot be read changes nothing: the lost link has its own
   notice, and without a reading there is no shutdown to protect. `ensure-off`
   and `status` never ask. `tests/test_power_manager.py` holds all of this.
-  Check that `n8n-runner` reads the UPS after a NUT change:
-  `sudo -u n8n-runner upsc ups@localhost ups.status` must answer `OL`.
+  The gate asks `upsc -l` for the names, so it does not depend on what
+  `ups.conf` calls the UPS; a check must not either. After a NUT change,
+  `sudo -u n8n-runner sh -c 'for u in $(upsc -l 2>/dev/null); do echo "$u: $(upsc "$u" ups.status 2>/dev/null)"; done'`
+  must list every UPS with `OL`.
 - **Every wait checks what it waited for.** The hypervisor not waking, the AI
   node not reaching `running`, or not answering over SSH once running, each
   ends in `blocked` — never in `ok`. A node that Proxmox reports as running is
