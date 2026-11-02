@@ -76,6 +76,22 @@ for f in services_metadata.json workflows/*.json stacks/*/*.json; do
   fi
 done
 
+# ── 4b. Every flow file carries its n8n id ───────────────────────────────
+# An import replaces a flow only when the ids match; without one it adds a
+# second flow, and `make healthcheck` cannot tell which flow in n8n the file
+# is. A flow written by hand has no id until n8n gives it one, and the hours
+# reminder went a week like that (2026-10-27 to 11-02) with the health check
+# red on it. The id comes from n8n, after the first import: /workflow/<id>.
+title "Workflows carry their n8n id and name"
+for f in workflows/*.json; do
+  [ -f "$f" ] || continue
+  if python3 -c "import json,sys; w=json.load(open(sys.argv[1])); sys.exit(0 if w.get('id') and w.get('name') else 1)" "$f" 2>/dev/null; then
+    ok "$f"
+  else
+    bad "$f — no id or name: import it once, then copy the id from n8n's address bar (/workflow/<id>)"
+  fi
+done
+
 # ── 5. Compose consistency ───────────────────────────────────────────────
 # Without Docker the configuration cannot be resolved, but every file can
 # still be checked for valid YAML, and every stack the root file includes can
