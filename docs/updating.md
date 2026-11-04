@@ -257,6 +257,47 @@ a word. Pin the major instead, `node = "24"` in mise or `nvm alias default 24`.
 Crossing it is a decision, as it is for an image (§1).
 
 **The firewall only from the LAN.** Its upgrade ends in a reboot, and if it
-does not come back, nothing outside reaches the network again. Download its
-configuration from its own interface as well as the copy above, and upgrade
-from a machine on the LAN.
+does not come back, nothing outside reaches the network again. Keep a copy of
+its configuration on the laptop as well as the one above, and upgrade from a
+machine on the LAN.
+
+On OPNsense the shell can take the web interface's own path, through configd
+and detached from the session, so a dropped SSH connection does not stop an
+upgrade halfway. Send the commands to `sh`, because root's login shell may be
+the console menu or csh:
+
+```bash
+ssh <firewall> sh -s <<'EOF'
+configctl firmware check      # one of the three: the "Check for updates" button
+EOF
+ssh <firewall> tail -f /tmp/pkg_upgrade.progress
+```
+
+- `configctl firmware check` writes its answer to `/tmp/pkg_upgrade.json`:
+  the versions, the base and kernel sets, `needs_reboot`, and
+  `upgrade_major_version` when a new series is offered.
+  `configctl firmware running` answers `busy` until it is done;
+- `configctl firmware update` installs a minor: packages, then base and
+  kernel, then the reboot;
+- `configctl firmware upgrade` installs a major: fetched online, then
+  installed offline at the next boot, with a second reboot. About thirteen
+  minutes of silence, longer than it looks.
+
+**A major is offered only from the last minor of its series**, and a series
+gets no fixes once the next one ships. So a firewall left behind is still
+exposed after its minors, and catching up takes three steps. On 2026-11-04 it
+went 26.1.6 → 26.1.11 → 26.7.7 → 26.7.8, about half an hour without internet
+in total. `pkg audit -F` before and after measures what was closed: 32 known
+problems in 15 packages before, 2 after.
+
+**Before a major on a UFS root there is nothing to roll back to**: boot
+environments (`bectl`) exist only on ZFS. The fallback is a fresh install
+with the configuration restored, so prepare it first:
+- the installer image, checked against the published checksum;
+- written to a USB stick, then compared with the device (`cmp`);
+- kept out of the machine during the upgrade, so the boot order cannot pick
+  it.
+
+Read what the major moves. In 26.7 the legacy rule pages and outbound NAT
+went to the `os-firewall-legacy` plugin: the rules keep working without it,
+but cannot be edited.
