@@ -183,3 +183,145 @@ answer, then measure.
 Bump the versions in `.env.example` too. That file is the source of truth for
 what a valid configuration looks like, and `make verify` is only meaningful if
 the repository claims what the runtime is actually running.
+
+## 6. The other machines
+
+The firewall, the hypervisor and its guests, and the laptops have packages of
+their own. The rule is the same as for the images: read first, then one
+machine at a time, each checked before the next. The order: the hypervisor,
+then its guests, so each reboots once; the firewall from the LAN, in a quiet
+moment; the laptop last, since its reboot ends whatever session you were
+running from it.
+
+**A copy of the configuration first.** `scripts/host-config-copy.sh`, from the
+laptop, with the machine's profile ([backup](backup.md#other-machines)). A
+failed upgrade then costs a reinstall and a restore, not a reconstruction.
+
+**Read what apt will install, not only what it will upgrade.** `apt list
+--upgradable` leaves out new packages, and a new kernel series arrives as one.
+On 2026-11-03 the hypervisor listed 235 upgrades and no kernel, while the
+simulation showed kernel 7.0 being installed beside 6.17. It also shows
+removals, and there should be none:
+
+```bash
+apt -s full-upgrade 2>/dev/null | grep -E '^Remv|^Inst [^ ]+ \('
+```
+
+**Run it inside `tmux`, with `apt full-upgrade`**, never `apt upgrade`, which
+holds back anything that needs a new package: on a hypervisor, the kernel.
+
+**A changed configuration file keeps the local version.** The upgrade asks
+about the files you edited, `sshd_config` first among them, and the default
+answer keeps yours. Before the reboot, `sshd -t` must pass: a configuration
+the new sshd refuses locks you out at boot.
+
+**A new kernel on the hypervisor is tested through the power path.** The Power
+Manager suspends the hypervisor and wakes it with Wake-on-LAN
+([automation](stacks/automation.md#power-manager)), and both go through the
+network driver. So the reboot is done where the console can be reached, and
+after it:
+
+```bash
+ip -br addr show <bridge>          # UP, with its address: the port kept its name
+ethtool <port> | grep Wake-on      # g
+grep -E 'XHCI|TXHC' /proc/acpi/wakeup   # *disabled: USB wakes nothing
+```
+
+Then close every terminal on the hypervisor and run the Power Manager by hand,
+`ensure-off` and then `ensure-on`: the hypervisor must suspend, wake, and the
+AI node answer. What keeps a new kernel from renaming the port is the
+interface names pinned to their MAC addresses, the `.link` files Proxmox VE 9
+writes. The previous kernel stays installed: if the new one breaks either
+step, `proxmox-boot-tool kernel pin <previous>` boots the old one until there
+is a fix. On 2026-11-03, 9.1 with kernel 6.17 to 9.2 with 7.0 passed both.
+
+**Only the network and the power button wake the hypervisor.** On 2026-11-08
+a bumped mouse woke it from standby through USB, and that wake left an ACPI
+event (GPE 6B, whose handler the firmware lacks) firing about 6,000 times a
+second: the hypervisor woke from every suspend, and its journal, at 1.9
+million lines a minute, kept only the last few minutes. A reboot cleared it.
+The same event fires once on every ordinary wake, so it is not masked:
+Wake-on-LAN goes through it. `host/90-no-usb-wake.rules` takes the wake away
+from every USB controller instead, whatever port or device, and leaves the
+network card's:
+
+```bash
+install -m 0644 host/90-no-usb-wake.rules /etc/udev/rules.d/
+udevadm verify /etc/udev/rules.d/90-no-usb-wake.rules
+udevadm control --reload
+for c in 0x0c0330 0x0c0340; do udevadm trigger --action=add --subsystem-match=pci --attr-match=class=$c; done
+cat /sys/firmware/acpi/interrupts/gpe6B      # one count per wake, not thousands a second
+```
+
+A guest in use keeps the hypervisor awake, so the desktop guest's mouse and
+keyboard work as before. Asleep, the hypervisor is woken by Wake-on-LAN or by
+a short press of the power button, only while it sleeps: awake, the press
+shuts it down.
+
+**The janitor is off for the duration.** The AI node counts as busy only while
+`who` lists a session. A detached tmux, a dropped SSH connection or the node's
+own reboot ends that, and the janitor stops the guest within five minutes, in
+the middle of an upgrade if one is running. The hypervisor counts terminals
+instead, so tmux does keep it on. Unpublish the janitor flow before starting
+and publish it again at the end. Meanwhile push no raw note and merge no
+ingest pull request, since a merge starts the next ingest. The AI node's own
+steps (the GPU driver, Ollama, Node) are in the knowledge-genome-orchestrator's
+runbook, «Upgrading the compute nodes».
+
+**A vendor's repository is not the distribution.** The packages a vendor's
+repository adds, a GPU driver for one, stay held on an ordinary run
+(`apt-mark hold`) unless a security bulletin covers the installed version. They
+are upgraded in a session of their own, with what they serve tested in it, and
+released with `apt-mark unhold`.
+
+**Runtimes stay on their major.** A version manager told to follow `lts`
+crosses a major when a new line becomes LTS: Node 26 did on 2026-10-28, and
+`lts` would have taken every machine from 24 to 26 at its next upgrade, without
+a word. Pin the major instead, `node = "24"` in mise or `nvm alias default 24`.
+Crossing it is a decision, as it is for an image (§1).
+
+**The firewall only from the LAN.** Its upgrade ends in a reboot, and if it
+does not come back, nothing outside reaches the network again. Keep a copy of
+its configuration on the laptop as well as the one above, and upgrade from a
+machine on the LAN.
+
+On OPNsense the shell can take the web interface's own path, through configd
+and detached from the session, so a dropped SSH connection does not stop an
+upgrade halfway. Send the commands to `sh`, because root's login shell may be
+the console menu or csh:
+
+```bash
+ssh <firewall> sh -s <<'EOF'
+configctl firmware check      # one of the three: the "Check for updates" button
+EOF
+ssh <firewall> tail -f /tmp/pkg_upgrade.progress
+```
+
+- `configctl firmware check` writes its answer to `/tmp/pkg_upgrade.json`:
+  the versions, the base and kernel sets, `needs_reboot`, and
+  `upgrade_major_version` when a new series is offered.
+  `configctl firmware running` answers `busy` until it is done;
+- `configctl firmware update` installs a minor: packages, then base and
+  kernel, then the reboot;
+- `configctl firmware upgrade` installs a major: fetched online, then
+  installed offline at the next boot, with a second reboot. About thirteen
+  minutes of silence, longer than it looks.
+
+**A major is offered only from the last minor of its series**, and a series
+gets no fixes once the next one ships. So a firewall left behind is still
+exposed after its minors, and catching up takes three steps. On 2026-11-04 it
+went 26.1.6 → 26.1.11 → 26.7.7 → 26.7.8, about half an hour without internet
+in total. `pkg audit -F` before and after measures what was closed: 32 known
+problems in 15 packages before, 2 after.
+
+**Before a major on a UFS root there is nothing to roll back to**: boot
+environments (`bectl`) exist only on ZFS. The fallback is a fresh install
+with the configuration restored, so prepare it first:
+- the installer image, checked against the published checksum;
+- written to a USB stick, then compared with the device (`cmp`);
+- kept out of the machine during the upgrade, so the boot order cannot pick
+  it.
+
+Read what the major moves. In 26.7 the legacy rule pages and outbound NAT
+went to the `os-firewall-legacy` plugin: the rules keep working without it,
+but cannot be edited.

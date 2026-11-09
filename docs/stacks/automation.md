@@ -177,6 +177,17 @@ every caller refuses anything blocked.
   with the arbiter's answer (`skip:<ids>`, `skip:task:<types>` or
   `skip:terminals:<n>`) in `note`. A forgotten shell keeps it on too, until it
   is closed.
+- **`standby` means the hypervisor went down and stayed down.** After the
+  arbiter's suspend, the flow waits 20 seconds, then asks the hypervisor
+  every five seconds for 40 more, with `BatchMode` and a three-second
+  timeout. Only ssh's own 255, nothing answering, counts as asleep: any
+  other answer, an error included, means it is awake. Awake at any point,
+  the answer is `blocked` (the suspend failed, or something woke it at once),
+  and the janitor's error reaches the phone. On 2026-11-08 a USB wake left an
+  ACPI event firing, the hypervisor woke from every suspend, and for half an
+  hour this flow answered `standby` every five minutes: it read only whether
+  the arbiter had said `skip:`. A `skip:` is still not checked, so a guest in
+  use costs no wait and raises no alarm.
 
 ## Hours reminder
 

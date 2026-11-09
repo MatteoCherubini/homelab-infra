@@ -36,6 +36,94 @@
     },
     {
       "parameters": {
+        "authentication": "privateKey",
+        "command": "=sleep 20; for i in 1 2 3 4 5 6 7 8; do ssh -o ConnectTimeout=3 -o BatchMode=yes {{ $env.KG_HYPERVISOR_HOST }} \"hypervisor-vm-arbiter status {{ $env.KG_AI_VMID }}\" >/dev/null 2>&1; if [ $? -ne 255 ]; then echo up; exit 0; fi; sleep 5; done; echo down"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -304
+      ],
+      "id": "ec075b30-bcb8-4f03-9c93-96f71e1ec772",
+      "name": "B6d - Hypervisor stays down?",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "GJQjKzte7Hjdfz89",
+          "name": "n8n container -> n8n-runner@server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c0691ec6-a66f-4e8f-99b2-1b230337abb9",
+              "leftValue": "={{ ($json.stdout || '').trim() }}",
+              "rightValue": "down",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1232,
+        -304
+      ],
+      "id": "90f234f7-36f6-4709-af28-7eb1dc3e0b1a",
+      "name": "B6e - Stayed down?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "280a6cd3-fe1c-4064-893c-dbedc83c316a",
+              "name": "status",
+              "value": "blocked",
+              "type": "string"
+            },
+            {
+              "id": "486064fe-b2b3-4ee3-817d-39c66bc9f58f",
+              "name": "mode",
+              "value": "ensure-off",
+              "type": "string"
+            },
+            {
+              "id": "037bde0a-00a8-43e3-ad92-e59e341199a5",
+              "name": "blocked_by",
+              "value": "the hypervisor was asked for standby but still answered within a minute: it did not stay asleep (the suspend failed, or something woke it)",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        -224
+      ],
+      "id": "5380fbb8-c215-4f51-9b1f-b85263fe6d43",
+      "name": "B6f - Output blocked (standby)"
+    },
+    {
+      "parameters": {
         "assignments": {
           "assignments": [
             {
@@ -69,8 +157,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1040,
-        -304
+        1440,
+        -384
       ],
       "id": "42bcbd91-7f50-4c5d-ab6f-6c8891d78494",
       "name": "B7 - Output OK"
@@ -1462,7 +1550,7 @@
         ],
         [
           {
-            "node": "B7 - Output OK",
+            "node": "B6d - Hypervisor stays down?",
             "type": "main",
             "index": 0
           }
@@ -1492,6 +1580,35 @@
         [
           {
             "node": "A1 - Hypervisor reachable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B6d - Hypervisor stays down?": {
+      "main": [
+        [
+          {
+            "node": "B6e - Stayed down?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "B6e - Stayed down?": {
+      "main": [
+        [
+          {
+            "node": "B7 - Output OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "B6f - Output blocked (standby)",
             "type": "main",
             "index": 0
           }

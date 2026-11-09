@@ -55,7 +55,11 @@ no Wake-on-LAN and no AI node start can be reached without the battery gate,
 `ensure-on` meets it first, `ensure-off` never does. The gate's command runs
 for real under `/bin/sh` against a fake `upsc`: on battery the flow ends in
 `blocked`, on mains or with no reading it goes on. A wake on battery shows
-nothing until a blackout, so this is the only place it can be seen.
+nothing until a blackout, so this is the only place it can be seen. The
+standby is pinned the same way: `hypervisor: standby` is reachable only
+through the check that the hypervisor went down, and that check runs under
+`/bin/sh` against a fake `ssh` that stays down, never goes down, answers with
+an error, or comes back after two calls.
 
 ### Has the suite ever failed?
 
@@ -68,7 +72,11 @@ verified the same way, on 2026-11-02: ten faults planted in the flow (the gate
 bypassed, its branches swapped, put only in front of Wake-on-LAN, blind to
 `OB`, closed on an unreadable UPS, reading only the first UPS, in front of
 `ensure-off`, answering `ok`, without the UPS's words, a second Wake-on-LAN
-around it), each one caught.
+around it), each one caught. The standby check on 2026-11-09: eleven faults
+(the check bypassed, its branches swapped, no `BatchMode`, a long timeout,
+always "down", any failed command taken as asleep, one probe only, two
+minutes of waiting, the AI node asked instead, `blocked` answering `ok`, a
+`skip:` sent through the check), each one caught.
 
 ---
 

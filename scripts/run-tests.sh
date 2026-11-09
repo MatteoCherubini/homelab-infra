@@ -24,7 +24,12 @@ bad()   { printf "  \033[31m✘\033[0m %s\n" "$1"; FAIL=$((FAIL+1)); }
 skip()  { printf "  \033[33m•\033[0m %s\n" "$1"; SKIP=$((SKIP+1)); }
 title() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 
-SHELL_FILES=(scripts/*.sh host/*)
+# host/ holds what is installed on a machine: scripts, and files that are not
+# (udev rules). Only a file that starts with #! is checked as a script.
+SHELL_FILES=(scripts/*.sh)
+for f in host/*; do
+  [ -f "$f" ] && [ "$(head -c2 "$f")" = "#!" ] && SHELL_FILES+=("$f")
+done
 PY_FILES=(scripts/*.py)
 
 # ── 1. Shell syntax ──────────────────────────────────────────────────────
@@ -263,6 +268,21 @@ PY
 else
   bad "the UPS runbook and the handler disagree"; printf '%s\n' "$out" | sed 's/^/      /'
 fi
+
+# ── 6d. udev rules parse ─────────────────────────────────────────────────
+# A rule udev cannot read is skipped at boot with one line in the journal,
+# and the machine keeps the behaviour the rule was there to change.
+title "udev rules parse"
+for f in host/*.rules; do
+  [ -f "$f" ] || continue
+  if ! udevadm verify --help >/dev/null 2>&1; then
+    skip "$f — udevadm verify not available (systemd 254 or later)"
+  elif out=$(udevadm verify --resolve-names=never "$f" 2>&1); then
+    ok "$f"
+  else
+    bad "$f"; printf '%s\n' "$out" | sed 's/^/      /'
+  fi
+done
 
 # ── 7. No committed secrets ──────────────────────────────────────────────
 # The check that matters before making the repository public. It looks only at
