@@ -160,5 +160,7 @@ git fetch origin --prune
 git merge --ff-only origin/main
 ```
 
-Host-level artefacts — currently the UPS handler — are installed from `host/`
-and are not managed by Compose. See [the UPS runbook](stacks/ups.md).
+Host-level artefacts are installed from `host/` and are not managed by
+Compose: the UPS handler on the server ([the UPS runbook](stacks/ups.md)),
+and the rule that keeps USB from waking the hypervisor
+([updating](updating.md#6-the-other-machines)).

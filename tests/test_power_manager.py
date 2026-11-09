@@ -10,10 +10,17 @@ been shut down on purpose (docs/stacks/ups.md), and the next ingest or the
 fifteen-minute safety-net asks this flow to bring it back. Woken on battery,
 it draws ~400 W, the shutdown timer that stopped it fires once per outage, and
 at low battery it loses power hard. Nothing announces that until it happens.
+
+They also pin the standby: `ensure-off` answers `hypervisor: standby` only once
+the hypervisor has stopped answering and stayed down. On 2026-11-08 a USB wake
+left an ACPI event firing on the hypervisor, it woke from every suspend, and
+for half an hour the flow reported "standby" every five minutes: the answer
+read only whether the arbiter had said `skip:`.
 """
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -194,6 +201,156 @@ class BatteryGateTest(unittest.TestCase):
         out = read_ups({"ups": "OL", "second": "OB DISCHRG"})
         after = reachable(outputs(gate())[branch(gate(), out)])
         self.assertNotIn(ssh_nodes("wakeonlan")[0], after, f"one UPS on battery was missed ({out!r})")
+
+
+def fields(name):
+    return {a["name"]: a["value"] for a in NODES[name]["parameters"]["assignments"]["assignments"]}
+
+
+def answers(names):
+    return [n for n in names if NODES[n]["type"] == "n8n-nodes-base.set"]
+
+
+def standby_request():
+    found = ssh_nodes("standby-if-idle")
+    if len(found) != 1:
+        raise AssertionError(f"expected one node that asks for the standby, found {found}")
+    return found[0]
+
+
+def standby_answer():
+    found = [n for n in answers(NODES) if fields(n).get("hypervisor") == "standby"]
+    if len(found) != 1:
+        raise AssertionError(f"expected one answer that says the hypervisor is on standby, found {found}")
+    return found[0]
+
+
+def standby_check():
+    """The SSH node, after the standby request, that asks the hypervisor again."""
+    found = [n for n in reachable([standby_request()]) if n != standby_request()
+             and NODES[n]["type"] == "n8n-nodes-base.ssh" and KG_HOST in command(NODES[n])]
+    if len(found) != 1:
+        raise AssertionError(f"expected one check of the hypervisor after the standby request, found {found}")
+    return found[0]
+
+
+def standby_verdict():
+    nxt = [n for out in outputs(standby_check()) for n in out]
+    if len(nxt) != 1 or NODES[nxt[0]]["type"] != "n8n-nodes-base.if":
+        raise AssertionError(f"the standby check should go to one If node, it goes to {nxt}")
+    return nxt[0]
+
+
+KG_HOST = "{{ $env.KG_HYPERVISOR_HOST }}"
+
+# Stands in for ssh: exit 255 (what ssh returns when it cannot connect) for the
+# first $FAKE_DOWN calls, then an answer. Every call and every sleep is logged,
+# so the test sees how it was asked and how long the check would wait.
+FAKE_SSH = r'''#!/bin/sh
+echo "$*" >> "$FAKE_LOG"
+n=$(cat "$FAKE_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$FAKE_COUNT"
+if [ "$n" -le "$FAKE_DOWN" ]; then echo "ssh: connect to host hypervisor port 22: Connection timed out" >&2; exit 255; fi
+echo stopped
+exit "${FAKE_RC:-0}"
+'''
+FAKE_SLEEP = r'''#!/bin/sh
+echo "$1" >> "$FAKE_SLEEPS"
+'''
+
+
+def check_standby(down, rc=0):
+    """Run the standby check as n8n-runner's shell would, with the hypervisor
+    unreachable for the first `down` connections. Returns (stdout, ssh calls,
+    seconds slept)."""
+    work = tempfile.mkdtemp()
+    bindir = os.path.join(work, "bin")
+    os.mkdir(bindir)
+    os.symlink("/bin/cat", os.path.join(bindir, "cat"))
+    for name, text in (("ssh", FAKE_SSH), ("sleep", FAKE_SLEEP)):
+        path = os.path.join(bindir, name)
+        with open(path, "w") as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+    env = {"PATH": bindir, "FAKE_DOWN": str(down), "FAKE_RC": str(rc), "FAKE_LOG": os.path.join(work, "ssh"),
+           "FAKE_COUNT": os.path.join(work, "count"), "FAKE_SLEEPS": os.path.join(work, "sleeps")}
+    cmd = command(NODES[standby_check()]).lstrip("=")
+    cmd = re.sub(r"\{\{\s*\$env\.(\w+)\s*\}\}", lambda m: {"KG_HYPERVISOR_HOST": "hypervisor",
+                                                           "KG_AI_VMID": "101"}[m.group(1)], cmd)
+    run = subprocess.run(["/bin/sh", "-c", cmd], capture_output=True, text=True, env=env, timeout=10)
+
+    def lines(name):
+        path = os.path.join(work, name)
+        return open(path).read().splitlines() if os.path.exists(path) else []
+    return run.stdout, lines("ssh"), sum(int(s) for s in lines("sleeps"))
+
+
+def after_check(down, rc=0):
+    out, _, _ = check_standby(down, rc)
+    return reachable(outputs(standby_verdict())[branch(standby_verdict(), out)])
+
+
+class StandbyTest(unittest.TestCase):
+
+    def test_standby_is_reported_only_after_the_check(self):
+        around = reachable([standby_request()], avoid={standby_check()})
+        self.assertNotIn(standby_answer(), around,
+                         "the flow can say 'standby' without checking that the hypervisor went down")
+
+    def test_a_hypervisor_that_stays_down_is_on_standby(self):
+        after = after_check(down=1000)
+        self.assertIn(standby_answer(), after)
+        self.assertEqual(answers(after), [standby_answer()])
+
+    def test_a_hypervisor_that_still_answers_is_blocked(self):
+        # The suspend failed, or the request never reached the arbiter.
+        self.assertNotIn(standby_answer(), after_check(down=0))
+
+    def test_a_hypervisor_that_wakes_again_is_blocked(self):
+        # 2026-11-08: suspended, woken a few seconds later by a stuck ACPI event.
+        self.assertNotIn(standby_answer(), after_check(down=2))
+
+    def test_an_answer_with_an_error_is_still_an_answer(self):
+        # `unauthorized command`, or a guest id the arbiter does not know: the
+        # command failed, but the hypervisor answered, so it is awake. Only
+        # ssh's own 255 means that nothing answered.
+        for rc in (1, 2):
+            with self.subTest(rc=rc):
+                self.assertNotIn(standby_answer(), after_check(down=0, rc=rc))
+
+    def test_blocked_says_why_for_the_notification(self):
+        for down in (0, 2):
+            with self.subTest(down=down):
+                ends = answers(after_check(down))
+                self.assertEqual(len(ends), 1, f"expected one answer, got {ends}")
+                f = fields(ends[0])
+                # The janitor fails on `blocked`, and the error reaches the phone.
+                self.assertEqual(f.get("status"), "blocked")
+                self.assertEqual(f.get("mode"), "ensure-off")
+                self.assertIn("standby", f.get("blocked_by", ""))
+
+    def test_the_check_never_hangs(self):
+        _, calls, slept = check_standby(down=1000)
+        self.assertTrue(calls, "the check never asked the hypervisor")
+        for call in calls:
+            # Without BatchMode a refused key waits for a password nobody types.
+            self.assertIn("BatchMode=yes", call)
+            timeout = re.search(r"ConnectTimeout=(\d+)", call)
+            self.assertTrue(timeout and int(timeout.group(1)) <= 5, f"no short ConnectTimeout in {call!r}")
+        # Long enough to see a wake-up right after the suspend, short enough
+        # for a flow that runs every five minutes.
+        self.assertGreaterEqual(slept, 45, f"watches only {slept}s")
+        self.assertLessEqual(slept, 90, f"waits {slept}s")
+
+    def test_a_skipped_standby_is_not_checked(self):
+        # A guest running (the desktop guest left on after a game) or a terminal
+        # open keeps the hypervisor on: no minute of waiting, and no alarm.
+        nxt = [n for out in outputs(standby_request()) for n in out]
+        self.assertEqual(len(nxt), 1, f"the standby request should go to one If node, it goes to {nxt}")
+        for stdout in ("skip:100", "skip:terminals:1", "skip:task:vzdump"):
+            with self.subTest(stdout=stdout):
+                after = reachable(outputs(nxt[0])[branch(nxt[0], stdout)])
+                self.assertNotIn(standby_check(), after)
+                self.assertEqual([fields(n).get("hypervisor") for n in answers(after)], ["on"])
 
 
 if __name__ == "__main__":

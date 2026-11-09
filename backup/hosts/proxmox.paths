@@ -48,6 +48,9 @@
 ?/etc/modprobe.d
 ?/etc/modules
 ?/etc/modules-load.d
+# Device rules: host/90-no-usb-wake.rules, so that only the network and the
+# power button wake the host (docs/updating.md, "The other machines")
+?/etc/udev/rules.d
 
 # Disks, backups, package sources. lvm/backup holds the volume groups'
 # metadata: the way back with vgcfgrestore when a group is damaged.
