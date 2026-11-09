@@ -224,6 +224,7 @@ after it:
 ```bash
 ip -br addr show <bridge>          # UP, with its address: the port kept its name
 ethtool <port> | grep Wake-on      # g
+grep -E 'XHCI|TXHC' /proc/acpi/wakeup   # *disabled: USB wakes nothing
 ```
 
 Then close every terminal on the hypervisor and run the Power Manager by hand,
@@ -233,6 +234,29 @@ interface names pinned to their MAC addresses, the `.link` files Proxmox VE 9
 writes. The previous kernel stays installed: if the new one breaks either
 step, `proxmox-boot-tool kernel pin <previous>` boots the old one until there
 is a fix. On 2026-11-03, 9.1 with kernel 6.17 to 9.2 with 7.0 passed both.
+
+**Only the network and the power button wake the hypervisor.** On 2026-11-08
+a bumped mouse woke it from standby through USB, and that wake left an ACPI
+event (GPE 6B, whose handler the firmware lacks) firing about 6,000 times a
+second: the hypervisor woke from every suspend, and its journal, at 1.9
+million lines a minute, kept only the last few minutes. A reboot cleared it.
+The same event fires once on every ordinary wake, so it is not masked:
+Wake-on-LAN goes through it. `host/90-no-usb-wake.rules` takes the wake away
+from every USB controller instead, whatever port or device, and leaves the
+network card's:
+
+```bash
+install -m 0644 host/90-no-usb-wake.rules /etc/udev/rules.d/
+udevadm verify /etc/udev/rules.d/90-no-usb-wake.rules
+udevadm control --reload
+for c in 0x0c0330 0x0c0340; do udevadm trigger --action=add --subsystem-match=pci --attr-match=class=$c; done
+cat /sys/firmware/acpi/interrupts/gpe6B      # one count per wake, not thousands a second
+```
+
+A guest in use keeps the hypervisor awake, so the desktop guest's mouse and
+keyboard work as before. Asleep, the hypervisor is woken by Wake-on-LAN or by
+a short press of the power button, only while it sleeps: awake, the press
+shuts it down.
 
 **The janitor is off for the duration.** The AI node counts as busy only while
 `who` lists a session. A detached tmux, a dropped SSH connection or the node's

@@ -1,0 +1,2 @@
+# Wake the hypervisor from the network and the power button only, never from USB (2026-11-08: a USB wake left ACPI GPE 6B firing and the host could not stay suspended).
+ACTION=="add", SUBSYSTEM=="pci", ATTR{class}=="0x0c0330|0x0c0340", ATTR{power/wakeup}="disabled"
