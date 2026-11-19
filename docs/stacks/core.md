@@ -41,6 +41,19 @@ from its own frontend even when the service behind it is broken.** That is why
 `make healthcheck` asserts on response bodies for the services that expose a
 meaningful health endpoint, rather than trusting the status code alone.
 
+**Certificates renew by themselves, and fail in silence.** NPM renews a Let's
+Encrypt certificate from 30 days before it expires, retrying once an hour. A
+hostname the tunnel publishes is validated over HTTP; one it does not publish
+is validated through DNS, with a Cloudflare API token that NPM keeps in its
+own database. When the token stops working, every attempt fails and says so
+only in NPM's log (`docker compose logs nginx`):
+`Error determining zone_id: 9109 … Invalid access token`. In November 2026 two
+certificates went three weeks like that and were found ten days from expiry,
+by chance, during an upgrade. `make healthcheck` now reads the certificate
+Nginx serves for every proxy host, through the same address a browser on the
+LAN uses, and fails below `CERT_MIN_VALID_DAYS` (21 by default): at that point
+NPM has been failing for a week, and there are three left to fix it.
+
 ## Homepage
 
 Reads `/var/run/docker.sock` read-only to discover containers. It holds no

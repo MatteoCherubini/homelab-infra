@@ -105,6 +105,11 @@ adds a second one; it also always leaves the flow unpublished. Both happened
 to the nightly backup in October 2026, and either would have gone unnoticed
 until a night was missing.
 
+For every proxy host with a certificate, it reads the certificate Nginx
+serves, as a browser would, and fails when fewer than `CERT_MIN_VALID_DAYS`
+remain. NPM renews by itself and reports a failed renewal only in its own log,
+where two of them went unread for three weeks. See [core](stacks/core.md).
+
 Where NUT is installed it also reads every UPS the server knows, and fails
 unless the status is on line: a UPS the server cannot read protects nothing,
 and says so nowhere else. See [ups](stacks/ups.md).
