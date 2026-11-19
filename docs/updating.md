@@ -179,6 +179,16 @@ DNS-validated ones, read in its log or started with *Renew Now*. NPM's log
 also showed why those two had not renewed for weeks: Cloudflare no longer
 accepted the token ([core](stacks/core.md#nginx-proxy-manager)).
 
+Run without a terminal, certbot also waits before it starts: a random delay of
+up to eight minutes, meant to spread scheduled renewals. Through a pipe nothing
+is printed meanwhile, so the dry-run looks hung, and a `timeout` around it
+reads as a failure. On 2026-11-19 that cost two runs. Turn the wait off when
+the run is by hand:
+
+```bash
+docker compose exec -T nginx timeout 300 certbot renew --dry-run --no-random-sleep-on-renew --cert-name npm-<n>
+```
+
 ### Do not measure immediately after a restart
 
 `make healthcheck` run seconds after `docker compose up -d` reports `HTTP 000`
