@@ -22,6 +22,29 @@ It is classified `critical` in `services_metadata.json`: everything reachable
 from outside passes through it, so an upgrade that goes wrong takes every
 published service with it.
 
+**Every proxy host with a certificate is set the same way.** The tunnel reaches
+Nginx over plain http, on port 80, and sends `X-Forwarded-Proto: https` to say
+the visitor came in over https. So:
+
+- *Force SSL* on, always with *Trust Upstream Forwarded Proto Headers*. Force
+  SSL alone sends every request from the tunnel back to https, which comes
+  through the tunnel as http again: a redirect loop. With Trust, Nginx believes
+  the header and redirects only plain http from the LAN.
+- *HSTS* on, *HSTS Sub-domains* off: a proxy host speaks for its own name.
+  Nginx sends the header only over https, so only the LAN gets it; visitors
+  through the tunnel get it only if Cloudflare sends it, a setting for the whole
+  zone. NPM adds `preload` in both variants; on a subdomain it does nothing.
+- *Block Common Exploits* off. It is a set of regular expressions on the query
+  string, aimed at PHP and SQL injection, and it also blocks ordinary values
+  such as a parameter that starts with a path.
+- *HTTP/2* and *Websockets support* as each service needs them.
+
+A name the tunnel does not publish gets the same settings: they cost nothing
+there and stay right if it is published later. To check a host after a change,
+plain http from the LAN must answer `301` to https, https `200` with
+`Strict-Transport-Security`, and from outside, http must reach https in one
+redirect.
+
 **On a server where `tailscale serve` also uses 443, publish Nginx's 443 on
 the LAN address only:** `NGINX_HTTPS_PORT=<lan-address>:443` in `.env` (the
 compose file takes `address:port` there as it is). Since Tailscale 1.104,
@@ -40,6 +63,26 @@ A caveat that matters when checking whether it works: **Nginx answers `200`
 from its own frontend even when the service behind it is broken.** That is why
 `make healthcheck` asserts on response bodies for the services that expose a
 meaningful health endpoint, rather than trusting the status code alone.
+
+**Certificates renew by themselves, and fail in silence.** NPM renews a Let's
+Encrypt certificate from 30 days before it expires, retrying once an hour. A
+hostname the tunnel publishes is validated over HTTP; one it does not publish
+is validated through DNS, with a Cloudflare API token that NPM keeps in its
+own database. When the token stops working, every attempt fails and says so
+only in NPM's log (`docker compose logs nginx`):
+`Error determining zone_id: 9109 … Invalid access token`. In November 2026 two
+certificates went three weeks like that and were found ten days from expiry,
+by chance, during an upgrade. `make healthcheck` now reads the certificate
+Nginx serves for every proxy host, through the same address a browser on the
+LAN uses, and fails below `CERT_MIN_VALID_DAYS` (21 by default): at that point
+NPM has been failing for a week, and there are three left to fix it.
+
+**A new DNS token means new certificates.** NPM stores the token with each
+certificate, and neither its interface nor its API can change it afterwards:
+*Renew Now* goes on using the old one. So, with the new token: create a new
+certificate for the same name, move the proxy host onto it and check what Nginx
+serves, then delete the old one, which revokes it. Deleting is also what stops
+the hourly attempts on a certificate no proxy host uses any more.
 
 ## Homepage
 

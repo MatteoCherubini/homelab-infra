@@ -80,7 +80,30 @@ two critical remote code execution holes.
 
 ## 4. Decision and application — by a person
 
-Read the actual release notes. Then, per service:
+Read the actual release notes, and the project's security advisories: the
+notes decide which version, not only whether. The checker proposes the newest
+release on the current line, and that is where the reading starts. Take the
+latest patch that has gone a week without a fix, since a release fixed the
+next day is still settling. The exception is a security fix for the version
+that is running, and that does not wait.
+
+On 2026-11-19 the two rules gave different answers on the same day:
+
+- Nginx Proxy Manager 2.17.1, seventeen hours old: it carried the fixes for
+  nginx2root, five critical nginx vulnerabilities reachable over HTTP/2, which
+  every proxy host had on.
+- Paperless-ngx 3.4.2 rather than 3.5.1: 3.5.0 needed a fix within a day, and
+  it migrates the tags.
+- n8n 2.48.5 rather than the 2.48.6 of that morning, which changed only the
+  image's Node runtime. And 2.48 rather than 2.47, because n8n patches the
+  stable and beta lines only, so the next advisories land there.
+- Immich left for a week: 3.4.2 was a day old, and the server is reached only
+  through the tailnet.
+
+The checker keeps proposing the newer versions until they are taken. That is
+expected, not a fault.
+
+Then, per service:
 
 ```bash
 make backup                                   # an off-site snapshot of everything first
@@ -170,6 +193,24 @@ renewal of a DNS-validated certificate fail while the service's own renewal
 works. In the event the credentials stayed on disk and the manual run was
 conclusive, but the check was written to be read either way: a gate whose
 failure has two possible meanings is not a gate.
+
+By the next upgrade they were gone. The manual dry-run failed on both
+DNS-validated certificates with `File not found: …/credentials-<n>`, which
+says nothing about the certificates. So the gate is split: the manual dry-run
+for the HTTP-validated certificates, and NPM's own renewal for the
+DNS-validated ones, read in its log or started with *Renew Now*. NPM's log
+also showed why those two had not renewed for weeks: Cloudflare no longer
+accepted the token ([core](stacks/core.md#nginx-proxy-manager)).
+
+Run without a terminal, certbot also waits before it starts: a random delay of
+up to eight minutes, meant to spread scheduled renewals. Through a pipe nothing
+is printed meanwhile, so the dry-run looks hung, and a `timeout` around it
+reads as a failure. On 2026-11-19 that cost two runs. Turn the wait off when
+the run is by hand:
+
+```bash
+docker compose exec -T nginx timeout 300 certbot renew --dry-run --no-random-sleep-on-renew --cert-name npm-<n>
+```
 
 ### Do not measure immediately after a restart
 
@@ -325,3 +366,34 @@ with the configuration restored, so prepare it first:
 Read what the major moves. In 26.7 the legacy rule pages and outbound NAT
 went to the `os-firewall-legacy` plugin: the rules keep working without it,
 but cannot be edited.
+
+**The firewall's Realtek ports run Realtek's own driver.** Both ports are
+RTL8111H. Under a heavy download through them, a `docker pull` on the server
+with many connections at once, FreeBSD's `re(4)` driver stopped the WAN port:
+`re0: watchdog timeout`, link down, a new DHCP lease, link up, and again every
+fifteen seconds until a reboot. For weeks it passed for the modem dropping the
+line; the firewall's system log said otherwise. 26.7.9 brought four fixes to
+that driver, and the port then recovered in seconds instead of looping, but
+the same pull still reset it. On 2026-11-19 the `os-realtek-re` plugin put
+Realtek's driver in its place, a kernel module (`realtek-re-kmod`) loaded at
+boot, and three pulls passed with no reset.
+
+- The plugin installs only on the latest release; on an older one it is
+  refused with `Installation out of date`. Update first, then
+  `configctl firmware install os-realtek-re` from the shell: the web page can
+  hang on its update check and never start the install.
+- It drives the LAN port too: if the module does not load, the firewall
+  cannot be reached from the network. Attach the console before the reboot (a
+  screen attached after boot stays black). Before the reboot,
+  `/boot/loader.conf` must have `if_re_load="YES"` and
+  `if_re_name="/boot/modules/if_re.ko"`; after it, `/var/run/dmesg.boot` must
+  name the ports `<Realtek PCIe GbE Family Controller>`, where FreeBSD's
+  driver says `<RealTek 8168/8111 …>`.
+- Hardware CRC, TSO and LRO stay disabled (Interfaces → Settings), as the
+  driver's notes advise.
+- The way back, from the console: option 8, `pkg remove os-realtek-re
+  realtek-re-kmod`, `reboot`. If the boot stops before the menu: escape to the
+  loader prompt, `disable-module if_re`, `boot`, then the same.
+- The module is built for one kernel, and a major replaces the kernel. Do a
+  major with the console at hand, and check after its reboot that the ports
+  still run Realtek's driver.
