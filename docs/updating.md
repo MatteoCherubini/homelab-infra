@@ -325,3 +325,34 @@ with the configuration restored, so prepare it first:
 Read what the major moves. In 26.7 the legacy rule pages and outbound NAT
 went to the `os-firewall-legacy` plugin: the rules keep working without it,
 but cannot be edited.
+
+**The firewall's Realtek ports run Realtek's own driver.** Both ports are
+RTL8111H. Under a heavy download through them, a `docker pull` on the server
+with many connections at once, FreeBSD's `re(4)` driver stopped the WAN port:
+`re0: watchdog timeout`, link down, a new DHCP lease, link up, and again every
+fifteen seconds until a reboot. For weeks it passed for the modem dropping the
+line; the firewall's system log said otherwise. 26.7.9 brought four fixes to
+that driver, and the port then recovered in seconds instead of looping, but
+the same pull still reset it. On 2026-11-19 the `os-realtek-re` plugin put
+Realtek's driver in its place, a kernel module (`realtek-re-kmod`) loaded at
+boot, and three pulls passed with no reset.
+
+- The plugin installs only on the latest release; on an older one it is
+  refused with `Installation out of date`. Update first, then
+  `configctl firmware install os-realtek-re` from the shell: the web page can
+  hang on its update check and never start the install.
+- It drives the LAN port too: if the module does not load, the firewall
+  cannot be reached from the network. Attach the console before the reboot (a
+  screen attached after boot stays black). Before the reboot,
+  `/boot/loader.conf` must have `if_re_load="YES"` and
+  `if_re_name="/boot/modules/if_re.ko"`; after it, `/var/run/dmesg.boot` must
+  name the ports `<Realtek PCIe GbE Family Controller>`, where FreeBSD's
+  driver says `<RealTek 8168/8111 …>`.
+- Hardware CRC, TSO and LRO stay disabled (Interfaces → Settings), as the
+  driver's notes advise.
+- The way back, from the console: option 8, `pkg remove os-realtek-re
+  realtek-re-kmod`, `reboot`. If the boot stops before the menu: escape to the
+  loader prompt, `disable-module if_re`, `boot`, then the same.
+- The module is built for one kernel, and a major replaces the kernel. Do a
+  major with the console at hand, and check after its reboot that the ports
+  still run Realtek's driver.
