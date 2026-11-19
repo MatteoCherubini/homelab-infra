@@ -80,7 +80,30 @@ two critical remote code execution holes.
 
 ## 4. Decision and application — by a person
 
-Read the actual release notes. Then, per service:
+Read the actual release notes, and the project's security advisories: the
+notes decide which version, not only whether. The checker proposes the newest
+release on the current line, and that is where the reading starts. Take the
+latest patch that has gone a week without a fix, since a release fixed the
+next day is still settling. The exception is a security fix for the version
+that is running, and that does not wait.
+
+On 2026-11-19 the two rules gave different answers on the same day:
+
+- Nginx Proxy Manager 2.17.1, seventeen hours old: it carried the fixes for
+  nginx2root, five critical nginx vulnerabilities reachable over HTTP/2, which
+  every proxy host had on.
+- Paperless-ngx 3.4.2 rather than 3.5.1: 3.5.0 needed a fix within a day, and
+  it migrates the tags.
+- n8n 2.48.5 rather than the 2.48.6 of that morning, which changed only the
+  image's Node runtime. And 2.48 rather than 2.47, because n8n patches the
+  stable and beta lines only, so the next advisories land there.
+- Immich left for a week: 3.4.2 was a day old, and the server is reached only
+  through the tailnet.
+
+The checker keeps proposing the newer versions until they are taken. That is
+expected, not a fault.
+
+Then, per service:
 
 ```bash
 make backup                                   # an off-site snapshot of everything first
