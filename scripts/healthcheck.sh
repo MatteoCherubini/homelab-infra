@@ -11,6 +11,7 @@
 # Usage:
 #   ./scripts/healthcheck.sh              # everything
 #   ./scripts/healthcheck.sh n8n forgejo  # selected services only
+#   ./scripts/healthcheck.sh certificates # what Nginx serves, and for how long
 #
 # Every check runs before anything is reported — a comparison is only useful
 # whole — and the exit code is 0 when they all passed, 1 otherwise, so an
@@ -56,6 +57,8 @@ DATA_ROOT=$(env_get DATA_ROOT ./data)
 BACKUP_MAX_AGE_HOURS=$(env_get BACKUP_MAX_AGE_HOURS 26)
 MEDIA_ROOT=$(env_get MEDIA_ROOT ./media)
 HOST_CONFIG_MAX_AGE_DAYS=$(env_get HOST_CONFIG_MAX_AGE_DAYS 100)
+NGINX_HTTPS_PORT=$(env_get NGINX_HTTPS_PORT 443)
+CERT_MIN_VALID_DAYS=$(env_get CERT_MIN_VALID_DAYS 21)
 
 PASS=0
 FAIL=0
@@ -200,6 +203,48 @@ if want n8n; then
       else ok "flow: $name" "active, id $id"
       fi
     done
+  fi
+fi
+
+# Nginx Proxy Manager renews a certificate from 30 days before it expires, once
+# an hour, and reports a failure only in its own log. In November 2026 two
+# renewals failed that way for three weeks — the DNS provider had stopped
+# accepting the token — while every check here passed. So this reads the
+# certificate Nginx actually serves for each proxy host, as a browser would,
+# and fails once fewer than CERT_MIN_VALID_DAYS remain: past 30, NPM has
+# already been failing. docs/stacks/core.md
+if want nginx || want certificates; then
+  title "Certificates"
+  # NGINX_HTTPS_PORT may carry an address (docs/stacks/core.md): use it as is.
+  addr=$NGINX_HTTPS_PORT
+  [[ $addr == *:* ]] || addr="127.0.0.1:$addr"
+  # The first server name of each proxy host that has a certificate. Read in
+  # the container: on the host these files may belong to root.
+  names=$(docker compose exec -T nginx sh -c '
+    for f in /data/nginx/proxy_host/*.conf; do
+      grep -qE "^[[:space:]]*ssl_certificate[[:space:]]" "$f" 2>/dev/null || continue
+      sed -n "s/^[[:space:]]*server_name[[:space:]][[:space:]]*\([^ ;]*\).*/\1/p" "$f" | head -1
+    done' 2>/dev/null | tr -d '\r')
+  rc=$?
+  if ! command -v openssl >/dev/null 2>&1; then
+    bad "certificates" "openssl is not installed on this host"
+  elif [ "$rc" -ne 0 ]; then
+    bad "certificates" "cannot read Nginx's proxy hosts"
+  elif [ -z "$names" ]; then
+    ok "certificates" "no proxy host serves one"
+  else
+    while read -r n; do
+      [ -n "$n" ] || continue
+      end=$(timeout 10 openssl s_client -connect "$addr" -servername "$n" </dev/null 2>/dev/null \
+              | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+      if [ -z "$end" ]; then bad "cert: $n" "nothing served on $addr"; continue; fi
+      left=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+      if [ "$left" -ge "$CERT_MIN_VALID_DAYS" ]; then
+        ok "cert: $n" "$left days left"
+      else
+        bad "cert: $n" "$left days left (limit $CERT_MIN_VALID_DAYS): NPM's log says why"
+      fi
+    done <<<"$names"
   fi
 fi
 
