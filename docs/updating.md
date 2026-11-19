@@ -171,6 +171,14 @@ works. In the event the credentials stayed on disk and the manual run was
 conclusive, but the check was written to be read either way: a gate whose
 failure has two possible meanings is not a gate.
 
+By the next upgrade they were gone. The manual dry-run failed on both
+DNS-validated certificates with `File not found: …/credentials-<n>`, which
+says nothing about the certificates. So the gate is split: the manual dry-run
+for the HTTP-validated certificates, and NPM's own renewal for the
+DNS-validated ones, read in its log or started with *Renew Now*. NPM's log
+also showed why those two had not renewed for weeks: Cloudflare no longer
+accepted the token ([core](stacks/core.md#nginx-proxy-manager)).
+
 ### Do not measure immediately after a restart
 
 `make healthcheck` run seconds after `docker compose up -d` reports `HTTP 000`
